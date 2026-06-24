@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Solicitacao de Horario | RH Sobral</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="sb-brand">
+        <div class="sb-dot"></div>
+        <div>
+          <strong>RH Sobral</strong>
+          <span>Solicitacoes internas</span>
+        </div>
+      </div>
+      <nav class="sb-nav" aria-label="Menu principal">
+        <a href="#nova-solicitacao" class="sb-item active">Nova solicitacao</a>
+        <a href="#painel-rh" class="sb-item">Painel do RH</a>
+        <a href="#assinaturas" class="sb-item">Assinaturas</a>
+      </nav>
+      <div class="sb-footer">
+        <div class="sb-user">
+          <div class="sb-avatar">RH</div>
+          <div>
+            <strong>Recursos Humanos</strong>
+            <span>Theodoro F. Sobral</span>
+          </div>
+        </div>
+        <button class="sb-logout" type="button" id="clearStorage">Limpar registros</button>
+      </div>
+    </aside>
+
+    <div class="main-wrap">
+      <header class="main-topbar">
+        <button class="sb-toggle" type="button" aria-label="Abrir menu">Menu</button>
+        <span class="main-title">Solicitacao de horario, entrada e saida excepcional</span>
+        <span class="main-clock" id="clockStatus">Control ID: aguardando ponto</span>
+      </header>
+
+      <main class="main-content">
+        <section class="hero-row" aria-labelledby="pageTitle">
+          <div>
+            <p class="eyebrow">Formulario digital</p>
+            <h1 id="pageTitle">Registro de RQ do colaborador</h1>
+            <p class="hero-text">Digite a matricula para carregar o cadastro, escolha a RQ e conclua com as assinaturas.</p>
+          </div>
+          <div class="protocol-box">
+            <span>Protocolo</span>
+            <strong id="requestId">Rascunho</strong>
+          </div>
+        </section>
+
+        <section class="statsbar" aria-label="Resumo">
+          <div class="pill">
+            <div class="pico">1</div>
+            <div>
+              <div class="plbl">Etapa atual</div>
+              <div class="pval bl">Cadastro</div>
+            </div>
+          </div>
+          <div class="pill">
+            <div class="pico">ID</div>
+            <div>
+              <div class="plbl">Ponto</div>
+              <div class="pval gn" id="controlMetric">Pendente</div>
+            </div>
+          </div>
+          <div class="pill">
+            <div class="pico">RH</div>
+            <div>
+              <div class="plbl">Status</div>
+              <div class="pval wn" id="saveStatus">Nao enviado</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="process-strip" aria-label="Etapas do processo">
+          <div class="process-step active" id="stepEmployee">
+            <span>1</span>
+            <strong>Funcionario</strong>
+          </div>
+          <div class="process-step" id="stepRequest">
+            <span>2</span>
+            <strong>Lista de RQ</strong>
+          </div>
+          <div class="process-step">
+            <span>3</span>
+            <strong>Assinaturas</strong>
+          </div>
+          <div class="process-step">
+            <span>4</span>
+            <strong>Arquivo RH</strong>
+          </div>
+        </section>
+
+        <div class="content-grid">
+          <section class="card form-card" id="nova-solicitacao" aria-labelledby="formTitle">
+            <div class="card-head">
+              <div>
+                <h2 id="formTitle">Nova solicitacao</h2>
+                <p>Primeiro informe a matricula. Os dados do funcionario serao carregados automaticamente.</p>
+              </div>
+            </div>
+
+            <form id="requestForm">
+              <fieldset>
+                <legend>Cadastro do funcionario</legend>
+                <label class="lookup-field">
+                  Matricula do funcionario
+                  <input name="employeeId" id="employeeIdInput" required inputmode="numeric" autocomplete="off" placeholder="Digite a matricula">
+                  <span id="lookupStatus">Digite a matricula para buscar o cadastro.</span>
+                </label>
+
+                <div class="fgrid">
+                  <label>
+                    Nome do funcionario
+                    <input name="employeeName" required readonly placeholder="Preenchido pela matricula">
+                  </label>
+                  <label>
+                    Setor
+                    <input name="department" required readonly placeholder="Preenchido pela matricula">
+                  </label>
+                  <label>
+                    Cargo
+                    <input name="role" readonly placeholder="Preenchido pela matricula">
+                  </label>
+                  <label>
+                    Superior imediato
+                    <input name="managerName" readonly placeholder="Preenchido pela matricula">
+                  </label>
+                  <label class="span-2">
+                    Horario cadastrado
+                    <input name="registeredSchedule" readonly placeholder="Preenchido pela matricula">
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset id="rqSection" class="locked-section" disabled>
+                <legend>Lista de RQ</legend>
+                <div class="rq-list">
+                  <label class="rq-card">
+                    <input type="radio" name="requestType" value="Alteracao de horario" required>
+                    <span>
+                      <strong>1. Alteracao de horario</strong>
+                      <small>Prazo determinado ou indeterminado.</small>
+                    </span>
+                  </label>
+                  <label class="rq-card">
+                    <input type="radio" name="requestType" value="Entrada fora de horario" required>
+                    <span>
+                      <strong>2. Entrada fora de horario</strong>
+                      <small>Registro de entrada em horario excepcional.</small>
+                    </span>
+                  </label>
+                  <label class="rq-card">
+                    <input type="radio" name="requestType" value="Saida fora de horario" required>
+                    <span>
+                      <strong>3. Saida fora de horario</strong>
+                      <small>Registro de saida em horario excepcional.</small>
+                    </span>
+                  </label>
+                  <label class="rq-card">
+                    <input type="radio" name="requestType" value="Servico externo" required>
+                    <span>
+                      <strong>4. Servico externo para empresa</strong>
+                      <small>Saida e retorno por atividade externa.</small>
+                    </span>
+                  </label>
+                  <label class="rq-card">
+                    <input type="radio" name="requestType" value="Saida particular" required>
+                    <span>
+                      <strong>5. Saida particular</strong>
+                      <small>Saida e retorno por motivo particular.</small>
+                    </span>
+                  </label>
+                  <label class="rq-card">
+                    <input type="radio" name="requestType" value="Falta justificada" required>
+                    <span>
+                      <strong>6. Falta justificada</strong>
+                      <small>Solicitacao com 24h de antecedencia.</small>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset>
+                <legend>Horario</legend>
+                <div class="fgrid four">
+                  <label>
+                    Data
+                    <input name="requestDate" type="date" required>
+                  </label>
+                  <label>
+                    Horario atual
+                    <input name="currentTime" type="time">
+                  </label>
+                  <label>
+                    Horario solicitado
+                    <input name="requestedTime" type="time" required>
+                  </label>
+                  <label>
+                    Retorno
+                    <input name="returnTime" type="time">
+                  </label>
+                </div>
+
+                <div class="control-box">
+                  <div>
+                    <strong>Horario registrado no ponto</strong>
+                    <p id="controlIdText">Buscar o registro do Control ID antes de salvar.</p>
+                  </div>
+                  <button class="btn-secondary" type="button" id="syncControlId">Buscar ponto</button>
+                </div>
+              </fieldset>
+
+              <fieldset>
+                <legend>Motivo</legend>
+                <label>
+                  Justificativa
+                  <textarea name="reason" required rows="4" placeholder="Informe o motivo de forma objetiva"></textarea>
+                </label>
+              </fieldset>
+
+              <fieldset id="assinaturas">
+                <legend>Assinaturas digitais</legend>
+                <div class="approval-grid" aria-label="Assinaturas obrigatorias">
+                  <label class="approval-card">
+                    <input type="checkbox" name="employeeApproval" required>
+                    <span>
+                      <strong>Funcionario</strong>
+                      <small>Confirma a solicitacao</small>
+                    </span>
+                  </label>
+                  <label class="approval-card">
+                    <input type="checkbox" name="managerApproval" required>
+                    <span>
+                      <strong>Chefe do setor</strong>
+                      <small>Autoriza o pedido</small>
+                    </span>
+                  </label>
+                  <label class="approval-card">
+                    <input type="checkbox" name="hrApproval" required>
+                    <span>
+                      <strong>Recursos Humanos</strong>
+                      <small>Valida e arquiva</small>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <div class="actions">
+                <button class="btn-primary" type="submit">Salvar solicitacao</button>
+                <button class="btn-secondary" type="reset">Limpar formulario</button>
+              </div>
+            </form>
+          </section>
+
+          <aside class="card side-card" id="painel-rh" aria-labelledby="summaryTitle">
+            <div class="card-head">
+              <div>
+                <h2 id="summaryTitle">Painel do RH</h2>
+                <p>Solicitacoes salvas neste computador.</p>
+              </div>
+            </div>
+
+            <div class="filters">
+              <label>
+                Setor
+                <select id="departmentFilter">
+                  <option value="">Todos</option>
+                </select>
+              </label>
+              <label>
+                Funcionario
+                <input id="employeeFilter" placeholder="Filtrar por nome">
+              </label>
+            </div>
+
+            <div class="mini-metrics">
+              <div>
+                <span>Mes</span>
+                <strong id="monthCount">0</strong>
+              </div>
+              <div>
+                <span>Semestre</span>
+                <strong id="semesterCount">0</strong>
+              </div>
+              <div>
+                <span>Ano</span>
+                <strong id="yearCount">0</strong>
+              </div>
+            </div>
+
+            <div class="records" id="recordsList" aria-live="polite"></div>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <template id="recordTemplate">
+      <article class="record">
+        <div class="record-top">
+          <div>
+            <strong data-field="employeeName"></strong>
+            <p data-field="requestType"></p>
+          </div>
+          <span data-field="department"></span>
+        </div>
+        <dl>
+          <div>
+            <dt>Data</dt>
+            <dd data-field="requestDate"></dd>
+          </div>
+          <div>
+            <dt>Ponto</dt>
+            <dd data-field="controlIdTime"></dd>
+          </div>
+          <div>
+            <dt>Solicitado</dt>
+            <dd data-field="requestedTime"></dd>
+          </div>
+        </dl>
+        <p class="reason" data-field="reason"></p>
+        <a data-field="emailLink" class="email-link" href="#">Preparar e-mail ao RH</a>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
