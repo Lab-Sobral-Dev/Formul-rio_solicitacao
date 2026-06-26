@@ -2,4 +2,4 @@
 setlocal
 cd /d "%~dp0"
 
-start "" "%~dp0index.html"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0iniciar-sistema.ps1"

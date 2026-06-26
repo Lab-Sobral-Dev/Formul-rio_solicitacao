@@ -1,0 +1,6 @@
+{
+  "httpPort": 5055,
+  "devicePort": "COM3",
+  "enrollAdminId": 1,
+  "adminIds": [1]
+}

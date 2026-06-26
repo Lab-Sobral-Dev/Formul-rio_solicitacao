@@ -3,10 +3,82 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Solicitacao de Horario | RH Sobral</title>
+    <title>Matrix Standard Login | RH Sobral</title>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>
+  <body class="login-locked">
+    <main class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
+      <canvas id="bg-canvas" aria-hidden="true"></canvas>
+      <div class="login-overlay" aria-hidden="true"></div>
+      <div class="deco-corner deco-tl" aria-hidden="true"></div>
+      <div class="deco-corner deco-tr" aria-hidden="true"></div>
+      <div class="deco-corner deco-bl" aria-hidden="true"></div>
+      <div class="deco-corner deco-br" aria-hidden="true"></div>
+      <svg class="deco-lines" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <line x1="0" y1="300" x2="400" y2="0" />
+        <line x1="0" y1="550" x2="550" y2="0" />
+        <line x1="80" y1="900" x2="800" y2="200" />
+        <line x1="0" y1="750" x2="750" y2="0" />
+        <circle cx="200" cy="150" r="90" />
+        <circle cx="200" cy="150" r="140" />
+        <circle cx="1300" cy="780" r="100" />
+        <circle cx="1300" cy="780" r="160" />
+      </svg>
+
+      <section class="brand-block" aria-hidden="true">
+        <div class="brand-icons">
+          <div class="matrix-logo">RH</div>
+          <span class="brand-sep">/</span>
+          <div class="matrix-logo matrix-logo-small">TS</div>
+        </div>
+        <div class="brand-text">
+          <h1>RH SOBRAL</h1>
+          <p class="brand-tagline">MATRIX ACCESS STANDARD</p>
+        </div>
+      </section>
+
+      <section class="login-scene">
+        <div class="login-card">
+          <div class="card-header">
+            <div class="login-symbol">RH</div>
+          </div>
+          <div class="card-body">
+            <div>
+              <h2 id="loginTitle">Entrar no sistema</h2>
+              <p class="card-subtitle">Portal interno de solicitacoes</p>
+            </div>
+            <div class="card-divider" aria-hidden="true"></div>
+            <form class="login-form" id="loginForm">
+              <div class="form-group">
+                <div class="form-label-row">
+                  <label class="form-label" for="loginUsername">Usuario</label>
+                  <button class="field-hint" type="button" id="userHintButton" aria-label="Ajuda do usuario">?</button>
+                </div>
+                <span class="field-hint-tooltip" id="userHintTooltip">Use seu usuario interno do RH</span>
+                <input class="form-input" id="loginUsername" name="username" autocomplete="username" required placeholder="Digite seu usuario">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="loginPassword">Senha</label>
+                <div class="password-wrapper">
+                  <input class="form-input" id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="Digite sua senha">
+                  <button class="password-toggle" type="button" id="passwordToggle" aria-label="Mostrar senha">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/>
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <p class="caps-lock-warning" id="capsLockWarning" hidden>Caps Lock ativo</p>
+              <p class="login-error" id="loginError" aria-live="polite"></p>
+              <button class="btn-submit" type="submit" id="loginSubmit" disabled>Entrar</button>
+            </form>
+            <p class="card-footer">Lab Sobral / Theodoro Sobral</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
     <aside class="sidebar">
       <div class="sb-brand">
         <div class="sb-dot"></div>
@@ -16,9 +88,9 @@
         </div>
       </div>
       <nav class="sb-nav" aria-label="Menu principal">
-        <a href="#nova-solicitacao" class="sb-item active">Nova solicitacao</a>
-        <a href="#painel-rh" class="sb-item">Painel do RH</a>
-        <a href="#assinaturas" class="sb-item">Assinaturas</a>
+        <a href="#nova-solicitacao" class="sb-item active" data-tab-target="nova-solicitacao">Nova solicitacao</a>
+        <a href="#painel-rh" class="sb-item rh-nav-locked" data-tab-target="painel-rh">Painel do RH</a>
+        <a href="#assinaturas" class="sb-item" data-tab-target="assinaturas">Assinaturas</a>
       </nav>
       <div class="sb-footer">
         <div class="sb-user">
@@ -29,6 +101,7 @@
           </div>
         </div>
         <button class="sb-logout" type="button" id="clearStorage">Limpar registros</button>
+        <button class="sb-logout logout-action" type="button" id="logoutButton">Sair</button>
       </div>
     </aside>
 
@@ -76,27 +149,14 @@
           </div>
         </section>
 
-        <section class="process-strip" aria-label="Etapas do processo">
-          <div class="process-step active" id="stepEmployee">
-            <span>1</span>
-            <strong>Funcionario</strong>
-          </div>
-          <div class="process-step" id="stepRequest">
-            <span>2</span>
-            <strong>Lista de RQ</strong>
-          </div>
-          <div class="process-step">
-            <span>3</span>
-            <strong>Assinaturas</strong>
-          </div>
-          <div class="process-step">
-            <span>4</span>
-            <strong>Arquivo RH</strong>
-          </div>
-        </section>
+        <div class="tabbar" role="tablist" aria-label="Areas do sistema">
+          <button class="tab-button active" type="button" role="tab" aria-selected="true" data-tab-target="nova-solicitacao">Nova solicitacao</button>
+          <button class="tab-button" type="button" role="tab" aria-selected="false" data-tab-target="painel-rh">Painel do RH</button>
+          <button class="tab-button" type="button" role="tab" aria-selected="false" data-tab-target="assinaturas">Assinaturas</button>
+        </div>
 
-        <div class="content-grid">
-          <section class="card form-card" id="nova-solicitacao" aria-labelledby="formTitle">
+        <div class="tab-panels">
+          <section class="card form-card tab-panel active" id="nova-solicitacao" aria-labelledby="formTitle">
             <div class="card-head">
               <div>
                 <h2 id="formTitle">Nova solicitacao</h2>
@@ -189,29 +249,40 @@
                 <legend>Horario</legend>
                 <div class="fgrid four">
                   <label>
-                    Data
-                    <input name="requestDate" type="date" required>
+                    Data do ponto
+                    <input name="requestDate" type="date" required readonly>
                   </label>
                   <label>
-                    Horario atual
-                    <input name="currentTime" type="time">
+                    Horario do ponto
+                    <input name="currentTime" type="time" readonly placeholder="Automatico">
                   </label>
                   <label>
-                    Horario solicitado
-                    <input name="requestedTime" type="time" required>
+                    Horario de saida
+                    <input name="requestedTime" type="time" required placeholder="Digite o horario de saida">
                   </label>
-                  <label>
-                    Retorno
-                    <input name="returnTime" type="time">
+                  <label id="returnTimeCard">
+                    Retorno no ponto
+                    <input name="returnTime" type="time" placeholder="Digite o horario de retorno">
+                  </label>
+                </div>
+
+                <div class="return-options" aria-label="Retorno do funcionario">
+                  <label class="return-card">
+                    <input type="radio" name="returnStatus" value="Vai retornar" checked>
+                    <span>Vai retornar</span>
+                  </label>
+                  <label class="return-card">
+                    <input type="radio" name="returnStatus" value="Nao vai mais retornar">
+                    <span>Nao vai mais retornar</span>
                   </label>
                 </div>
 
                 <div class="control-box">
                   <div>
-                    <strong>Horario registrado no ponto</strong>
-                    <p id="controlIdText">Buscar o registro do Control ID antes de salvar.</p>
+                    <strong>Horario vinculado ao sistema de ponto</strong>
+                    <p id="controlIdText">O horario sera exibido automaticamente pelo Control ID.</p>
                   </div>
-                  <button class="btn-secondary" type="button" id="syncControlId">Buscar ponto</button>
+                  <button class="btn-secondary" type="button" id="syncControlId">Atualizar ponto</button>
                 </div>
               </fieldset>
 
@@ -223,33 +294,6 @@
                 </label>
               </fieldset>
 
-              <fieldset id="assinaturas">
-                <legend>Assinaturas digitais</legend>
-                <div class="approval-grid" aria-label="Assinaturas obrigatorias">
-                  <label class="approval-card">
-                    <input type="checkbox" name="employeeApproval" required>
-                    <span>
-                      <strong>Funcionario</strong>
-                      <small>Confirma a solicitacao</small>
-                    </span>
-                  </label>
-                  <label class="approval-card">
-                    <input type="checkbox" name="managerApproval" required>
-                    <span>
-                      <strong>Chefe do setor</strong>
-                      <small>Autoriza o pedido</small>
-                    </span>
-                  </label>
-                  <label class="approval-card">
-                    <input type="checkbox" name="hrApproval" required>
-                    <span>
-                      <strong>Recursos Humanos</strong>
-                      <small>Valida e arquiva</small>
-                    </span>
-                  </label>
-                </div>
-              </fieldset>
-
               <div class="actions">
                 <button class="btn-primary" type="submit">Salvar solicitacao</button>
                 <button class="btn-secondary" type="reset">Limpar formulario</button>
@@ -257,44 +301,101 @@
             </form>
           </section>
 
-          <aside class="card side-card" id="painel-rh" aria-labelledby="summaryTitle">
+          <aside class="card side-card tab-panel rh-tab-locked" id="painel-rh" aria-labelledby="summaryTitle">
             <div class="card-head">
               <div>
                 <h2 id="summaryTitle">Painel do RH</h2>
-                <p>Solicitacoes salvas neste computador.</p>
+                <p>Acesso restrito a administradores cadastrados por digital.</p>
               </div>
             </div>
 
-            <div class="filters">
-              <label>
-                Setor
-                <select id="departmentFilter">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label>
-                Funcionario
-                <input id="employeeFilter" placeholder="Filtrar por nome">
-              </label>
+            <div class="rh-lock" id="rhLock">
+              <div class="fingerprint-mark" aria-hidden="true"></div>
+              <div>
+                <h3>Validacao pelo leitor Control iD</h3>
+                <p>Use o iDBio conectado neste computador para validar uma digital cadastrada como admin.</p>
+              </div>
+              <div class="biometric-actions">
+                <button class="btn-secondary" type="button" id="rhRegisterFingerprintButton">Cadastrar admin</button>
+                <button class="btn-primary" type="button" id="rhFingerprintButton">Liberar RH</button>
+              </div>
+              <p class="rh-lock-status" id="rhLockStatus" aria-live="polite"></p>
             </div>
 
-            <div class="mini-metrics">
-              <div>
-                <span>Mes</span>
-                <strong id="monthCount">0</strong>
+            <div class="rh-panel locked" id="rhPanelContent">
+              <div class="filters">
+                <label>
+                  Setor
+                  <select id="departmentFilter">
+                    <option value="">Todos</option>
+                  </select>
+                </label>
+                <label>
+                  Funcionario
+                  <input id="employeeFilter" placeholder="Filtrar por nome">
+                </label>
               </div>
-              <div>
-                <span>Semestre</span>
-                <strong id="semesterCount">0</strong>
-              </div>
-              <div>
-                <span>Ano</span>
-                <strong id="yearCount">0</strong>
-              </div>
-            </div>
 
-            <div class="records" id="recordsList" aria-live="polite"></div>
+              <div class="mini-metrics">
+                <div>
+                  <span>Mes</span>
+                  <strong id="monthCount">0</strong>
+                </div>
+                <div>
+                  <span>Semestre</span>
+                  <strong id="semesterCount">0</strong>
+                </div>
+                <div>
+                  <span>Ano</span>
+                  <strong id="yearCount">0</strong>
+                </div>
+              </div>
+
+              <div class="records" id="recordsList" aria-live="polite"></div>
+            </div>
           </aside>
+
+          <section class="card form-card tab-panel" id="assinaturas" aria-labelledby="signaturesTitle">
+            <div class="card-head">
+              <div>
+                <h2 id="signaturesTitle">Assinaturas digitais</h2>
+                <p>Marque as confirmacoes obrigatorias antes de salvar a solicitacao.</p>
+              </div>
+            </div>
+
+            <fieldset>
+              <legend>Assinaturas obrigatorias</legend>
+              <div class="approval-grid" aria-label="Assinaturas obrigatorias">
+                <label class="approval-card">
+                  <input type="checkbox" name="employeeApproval" form="requestForm">
+                  <span>
+                    <strong>Funcionario</strong>
+                    <small>Confirma a solicitacao</small>
+                  </span>
+                </label>
+                <label class="approval-card">
+                  <input type="checkbox" name="managerApproval" form="requestForm">
+                  <span>
+                    <strong>Chefe do setor</strong>
+                    <small>Autoriza o pedido</small>
+                  </span>
+                </label>
+                <label class="approval-card">
+                  <input type="checkbox" name="hrApproval" form="requestForm">
+                  <span>
+                    <strong>Recursos Humanos</strong>
+                    <small>Valida e arquiva</small>
+                  </span>
+                </label>
+              </div>
+              <p class="signature-warning" id="signatureWarning" aria-live="polite"></p>
+            </fieldset>
+
+            <div class="actions">
+              <button class="btn-primary" type="submit" form="requestForm" id="signatureSubmit">Salvar solicitacao</button>
+              <button class="btn-secondary" type="reset" form="requestForm">Limpar formulario</button>
+            </div>
+          </section>
         </div>
       </main>
     </div>
@@ -318,8 +419,12 @@
             <dd data-field="controlIdTime"></dd>
           </div>
           <div>
-            <dt>Solicitado</dt>
+            <dt>Horario</dt>
             <dd data-field="requestedTime"></dd>
+          </div>
+          <div>
+            <dt>Retorno</dt>
+            <dd data-field="returnStatus"></dd>
           </div>
         </dl>
         <p class="reason" data-field="reason"></p>
