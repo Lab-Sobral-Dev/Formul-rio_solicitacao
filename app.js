@@ -318,6 +318,7 @@ function unlockRhPanel() {
   rhPanelContent.classList.add("unlocked");
   rhLockStatus.textContent = "";
   renderEmployeeRegistry();
+  fillRegisteredScheduleWithBrasiliaTime();
 }
 
 function lockRhPanel() {
@@ -608,6 +609,21 @@ function currentClockTime() {
   return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
+function currentBrasiliaTime() {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(new Date());
+}
+
+function fillRegisteredScheduleWithBrasiliaTime(force = false) {
+  const field = employeeRegistryForm?.elements.registeredSchedule;
+  if (!field || (!force && field.value.trim())) return;
+  field.value = currentBrasiliaTime();
+}
+
 function fillPointTime(pointTime) {
   document.querySelector('[name="requestDate"]').value = todayDate();
   setField("currentTime", pointTime);
@@ -894,6 +910,7 @@ employeeRegistryForm.addEventListener("submit", async (event) => {
   }
 
   employeeRegistryForm.reset();
+  fillRegisteredScheduleWithBrasiliaTime(true);
   populateDepartmentOptions();
   renderEmployeeRegistry();
   renderRecords();
@@ -904,6 +921,7 @@ employeeRegistryForm.addEventListener("submit", async (event) => {
 employeeRegistryForm.addEventListener("reset", () => {
   window.setTimeout(() => {
     employeeRegistryStatus.textContent = "";
+    fillRegisteredScheduleWithBrasiliaTime(true);
   }, 0);
 });
 
@@ -1038,6 +1056,7 @@ async function initApp() {
     panel.hidden = !panel.classList.contains("active");
   });
   populateDepartmentOptions();
+  fillRegisteredScheduleWithBrasiliaTime();
   document.querySelector('[name="requestDate"]').value = todayDate();
   initMatrixBackground();
   syncLoginSubmit();
