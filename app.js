@@ -3,6 +3,8 @@ const API_TOKEN_KEY = "rhSobralApiToken";
 const THEME_KEY = "rhSobralTheme";
 const IDBIO_BRIDGE_URL = "http://127.0.0.1:5055";
 const RH_EMAIL = "rh@empresa.com.br";
+const DEFAULT_API_TIMEOUT_MS = 8000;
+const BIOMETRIC_API_TIMEOUT_MS = 45000;
 
 const loginForm = document.querySelector("#loginForm");
 const loginError = document.querySelector("#loginError");
@@ -142,7 +144,6 @@ function unlockApp() {
 
 function lockApp() {
   document.body.classList.add("login-locked");
-  scheduleAutoLoginFingerprint();
 }
 
 function isAuthenticated() {
@@ -185,15 +186,6 @@ function clearAutoLoginFingerprint() {
   if (!autoLoginFingerprintTimer) return;
   window.clearTimeout(autoLoginFingerprintTimer);
   autoLoginFingerprintTimer = 0;
-}
-
-function scheduleAutoLoginFingerprint(delay = 600) {
-  if (apiToken || !document.body.classList.contains("login-locked")) return;
-  clearAutoLoginFingerprint();
-  autoLoginFingerprintTimer = window.setTimeout(() => {
-    autoLoginFingerprintTimer = 0;
-    loginWithFingerprint({ automatic: true });
-  }, delay);
 }
 
 function initMatrixBackground() {
@@ -267,6 +259,8 @@ function hasRhAccess() {
 }
 
 async function apiRequest(path, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_API_TIMEOUT_MS);
   const headers = {
     ...(options.headers || {})
   };
@@ -279,10 +273,16 @@ async function apiRequest(path, options = {}) {
     response = await fetch(`${IDBIO_BRIDGE_URL}${path}`, {
       method: options.method || "GET",
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal
     });
   } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Ponte local demorou para responder. Feche e abra novamente pelo arquivo abrir-formulario.bat.");
+    }
     throw new Error("Ponte local nao encontrada. Abra o sistema pelo arquivo abrir-formulario.bat.");
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 
   const payload = await response.json();
@@ -343,7 +343,7 @@ function setBiometricBusy(isBusy) {
 }
 
 async function callIdBioBridge(path) {
-  return apiRequest(path, { method: "POST" });
+  return apiRequest(path, { method: "POST", timeoutMs: BIOMETRIC_API_TIMEOUT_MS });
 }
 
 async function validateRhFingerprint() {
@@ -389,8 +389,7 @@ async function registerRhFingerprint() {
       lockRhPanel();
       rhLockStatus.textContent = "Digital admin cadastrada. Coloque a digital para liberar o Painel RH.";
     } else if (document.body.classList.contains("login-locked")) {
-      statusTarget.textContent = "Digital admin cadastrada. Coloque o dedo novamente para entrar.";
-      scheduleAutoLoginFingerprint(1000);
+      statusTarget.textContent = "Digital admin cadastrada. Clique em Entrar com digital para acessar.";
     }
   } catch (error) {
     statusTarget.textContent = `Nao foi possivel cadastrar a digital: ${error.message}`;
@@ -409,16 +408,13 @@ async function loginWithFingerprint(options = {}) {
     : "Coloque a digital admin no leitor...";
 
   try {
-    const payload = await apiRequest("/login/biometric", { method: "POST" });
+    const payload = await apiRequest("/login/biometric", { method: "POST", timeoutMs: BIOMETRIC_API_TIMEOUT_MS });
     await setAuthenticated(payload.token);
     loginBiometricStatus.textContent = "";
   } catch (error) {
     loginBiometricStatus.textContent = `Digital nao validada: ${error.message}`;
   } finally {
     setBiometricBusy(false);
-    if (options.automatic && !apiToken && document.body.classList.contains("login-locked")) {
-      scheduleAutoLoginFingerprint(1200);
-    }
   }
 }
 
@@ -1066,7 +1062,6 @@ async function initApp() {
   renderRecords();
 
   if (!apiToken) {
-    scheduleAutoLoginFingerprint();
     return;
   }
 
