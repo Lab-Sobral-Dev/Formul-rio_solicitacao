@@ -54,6 +54,38 @@ const controlMetric = document.querySelector("#controlMetric");
 const sidebar = document.querySelector(".sidebar");
 const sidebarToggle = document.querySelector(".sb-toggle");
 const themeToggle = document.querySelector("#themeToggle");
+const departmentOptions = document.querySelector("#departmentOptions");
+
+const DEPARTMENTS = [
+  "Presidência",
+  "Diretoria Administrativa Financeira",
+  "Administrativo",
+  "Diretoria de Operações",
+  "Gerência Administrativa Financeira",
+  "Gerência de Operações",
+  "Recepção",
+  "Recursos Humanos",
+  "Financeiro",
+  "Tecnologia da Informação",
+  "Marketing",
+  "Contabilidade",
+  "Manutenção",
+  "Suprimentos",
+  "SESMT/Serviços Gerais",
+  "Logística de Expedição — Almoxarifado PA",
+  "Logística de Recebimento — Almoxarifado MP/ME",
+  "Validação",
+  "Sistema da Qualidade — CQ",
+  "Sistema da Qualidade — SAC",
+  "Sistema da Qualidade — Departamento Técnico",
+  "Produção — Suplementos/Cosméticos",
+  "Produção — Encartuchamento",
+  "Produção — Suplemento Sólidos/Embalagem",
+  "Produção — Suplemento Sólidos/Blisteragem",
+  "Produção — Suplemento Sólidos/Compressão",
+  "Comercial — Teresina/PI",
+  "Guarita"
+];
 
 const DEFAULT_EMPLOYEES_BY_ID = {
   "1024": {
@@ -120,6 +152,7 @@ async function setAuthenticated(token) {
   sessionStorage.setItem(API_TOKEN_KEY, token);
   loginError.classList.remove("visible");
   await refreshEmployees();
+  populateDepartmentOptions();
   unlockApp();
 }
 
@@ -268,6 +301,7 @@ async function apiRequest(path, options = {}) {
 async function refreshEmployees() {
   const payload = await apiRequest("/employees");
   employeesCache = { ...DEFAULT_EMPLOYEES_BY_ID, ...payload };
+  populateDepartmentOptions();
 }
 
 async function refreshRecords() {
@@ -545,6 +579,21 @@ function loadRecords() {
   return recordsCache;
 }
 
+function sortedDepartments(extraDepartments = []) {
+  return [...new Set([...DEPARTMENTS, ...extraDepartments].filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+function populateDepartmentOptions() {
+  if (!departmentOptions) return;
+  departmentOptions.innerHTML = "";
+  sortedDepartments(Object.values(loadEmployees()).map((employee) => employee.department)).forEach((department) => {
+    const option = document.createElement("option");
+    option.value = department;
+    departmentOptions.append(option);
+  });
+}
+
 function pad(value) {
   return String(value).padStart(2, "0");
 }
@@ -605,7 +654,9 @@ function createEmailLink(record) {
 
 function populateDepartmentFilter(records) {
   const current = departmentFilter.value;
-  const departments = [...new Set(records.map((record) => record.department))].sort();
+  const employeeDepartments = Object.values(loadEmployees()).map((employee) => employee.department);
+  const recordDepartments = records.map((record) => record.department);
+  const departments = sortedDepartments([...employeeDepartments, ...recordDepartments]);
 
   departmentFilter.innerHTML = '<option value="">Todos</option>';
   departments.forEach((department) => {
@@ -843,7 +894,9 @@ employeeRegistryForm.addEventListener("submit", async (event) => {
   }
 
   employeeRegistryForm.reset();
+  populateDepartmentOptions();
   renderEmployeeRegistry();
+  renderRecords();
 
   if (employeeIdInput.value === employeeId) fillEmployeeById(employeeId);
 });
@@ -879,7 +932,9 @@ employeeRegistryList.addEventListener("click", async (event) => {
     }
 
     employeeRegistryStatus.textContent = "Funcionario removido do cadastro.";
+    populateDepartmentOptions();
     renderEmployeeRegistry();
+    renderRecords();
 
     if (employeeIdInput.value === employeeId) fillEmployeeById(employeeId);
   }
@@ -982,6 +1037,7 @@ async function initApp() {
   tabPanels.forEach((panel) => {
     panel.hidden = !panel.classList.contains("active");
   });
+  populateDepartmentOptions();
   document.querySelector('[name="requestDate"]').value = todayDate();
   initMatrixBackground();
   syncLoginSubmit();
