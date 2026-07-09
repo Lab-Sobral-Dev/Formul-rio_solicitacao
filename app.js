@@ -1,16 +1,16 @@
-const STORAGE_KEY = "horarioSolicitacoes";
-const SESSION_KEY = "rhSobralSession";
 const RH_ACCESS_KEY = "rhCoordinatorFingerprint";
+const API_TOKEN_KEY = "rhSobralApiToken";
+const THEME_KEY = "rhSobralTheme";
 const IDBIO_BRIDGE_URL = "http://127.0.0.1:5055";
 const RH_EMAIL = "rh@empresa.com.br";
-const LOGIN_USER = "rh.sobral";
-const LOGIN_PASSWORD = "1234";
 
 const loginForm = document.querySelector("#loginForm");
 const loginError = document.querySelector("#loginError");
 const loginUsername = document.querySelector("#loginUsername");
 const loginPassword = document.querySelector("#loginPassword");
 const loginSubmit = document.querySelector("#loginSubmit");
+const loginBiometricButton = document.querySelector("#loginBiometricButton");
+const loginBiometricStatus = document.querySelector("#loginBiometricStatus");
 const passwordToggle = document.querySelector("#passwordToggle");
 const capsLockWarning = document.querySelector("#capsLockWarning");
 const userHintButton = document.querySelector("#userHintButton");
@@ -30,13 +30,14 @@ const clearStorage = document.querySelector("#clearStorage");
 const logoutButton = document.querySelector("#logoutButton");
 const rhLock = document.querySelector("#rhLock");
 const rhPanelContent = document.querySelector("#rhPanelContent");
+const rhPanelExitButton = document.querySelector("#rhPanelExitButton");
 const rhTab = document.querySelector("#painel-rh");
 const rhNavItem = document.querySelector('[data-tab-target="painel-rh"]');
-const rhRegisterFingerprintButton = document.querySelector("#rhRegisterFingerprintButton");
-const rhFingerprintButton = document.querySelector("#rhFingerprintButton");
+const rhRegisterFingerprintButtons = document.querySelectorAll("[data-register-fingerprint]");
 const rhLockStatus = document.querySelector("#rhLockStatus");
-const signatureWarning = document.querySelector("#signatureWarning");
-const signatureSubmit = document.querySelector("#signatureSubmit");
+const employeeRegistryForm = document.querySelector("#employeeRegistryForm");
+const employeeRegistryStatus = document.querySelector("#employeeRegistryStatus");
+const employeeRegistryList = document.querySelector("#employeeRegistryList");
 const monthCount = document.querySelector("#monthCount");
 const semesterCount = document.querySelector("#semesterCount");
 const yearCount = document.querySelector("#yearCount");
@@ -52,8 +53,9 @@ const stepRequest = document.querySelector("#stepRequest");
 const controlMetric = document.querySelector("#controlMetric");
 const sidebar = document.querySelector(".sidebar");
 const sidebarToggle = document.querySelector(".sb-toggle");
+const themeToggle = document.querySelector("#themeToggle");
 
-const EMPLOYEES_BY_ID = {
+const DEFAULT_EMPLOYEES_BY_ID = {
   "1024": {
     employeeName: "Maria Santos",
     department: "Producao",
@@ -79,28 +81,59 @@ const EMPLOYEES_BY_ID = {
 
 let controlIdTime = "";
 let isSaving = false;
+let isBiometricReading = false;
+let activeTabId = document.querySelector(".tab-panel.active")?.id || "nova-solicitacao";
+let apiToken = sessionStorage.getItem(API_TOKEN_KEY) || "";
+let employeesCache = { ...DEFAULT_EMPLOYEES_BY_ID };
+let recordsCache = [];
+let autoLoginFingerprintTimer = 0;
+
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.body.classList.toggle("dark-theme", isDark);
+  themeToggle.textContent = isDark ? "Tema claro" : "Tema escuro";
+  themeToggle.setAttribute("aria-pressed", String(isDark));
+}
+
+function toggleTheme() {
+  const nextTheme = document.body.classList.contains("dark-theme") ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, nextTheme);
+  applyTheme(nextTheme);
+}
 
 function unlockApp() {
   document.body.classList.remove("login-locked");
+  clearAutoLoginFingerprint();
 }
 
 function lockApp() {
   document.body.classList.add("login-locked");
+  scheduleAutoLoginFingerprint();
 }
 
 function isAuthenticated() {
-  return localStorage.getItem(SESSION_KEY) === "active";
+  return Boolean(apiToken);
 }
 
-function setAuthenticated() {
-  localStorage.setItem(SESSION_KEY, "active");
+async function setAuthenticated(token) {
+  apiToken = token;
+  sessionStorage.setItem(API_TOKEN_KEY, token);
   loginError.classList.remove("visible");
+  await refreshEmployees();
   unlockApp();
 }
 
-function logout() {
-  localStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(RH_ACCESS_KEY);
+async function logout() {
+  if (apiToken) {
+    try {
+      await apiRequest("/logout", { method: "POST" });
+    } catch (error) {
+      // The local session is cleared even if the bridge is already closed.
+    }
+  }
+  apiToken = "";
+  sessionStorage.removeItem(API_TOKEN_KEY);
+  sessionStorage.removeItem(RH_ACCESS_KEY);
   loginForm.reset();
   loginError.textContent = "";
   loginError.classList.remove("visible");
@@ -111,6 +144,21 @@ function logout() {
 
 function syncLoginSubmit() {
   loginSubmit.disabled = !loginUsername.value.trim() || !loginPassword.value;
+}
+
+function clearAutoLoginFingerprint() {
+  if (!autoLoginFingerprintTimer) return;
+  window.clearTimeout(autoLoginFingerprintTimer);
+  autoLoginFingerprintTimer = 0;
+}
+
+function scheduleAutoLoginFingerprint(delay = 600) {
+  if (apiToken || !document.body.classList.contains("login-locked")) return;
+  clearAutoLoginFingerprint();
+  autoLoginFingerprintTimer = window.setTimeout(() => {
+    autoLoginFingerprintTimer = 0;
+    loginWithFingerprint({ automatic: true });
+  }, delay);
 }
 
 function initMatrixBackground() {
@@ -183,6 +231,49 @@ function hasRhAccess() {
   return sessionStorage.getItem(RH_ACCESS_KEY) === "authorized";
 }
 
+async function apiRequest(path, options = {}) {
+  const headers = {
+    ...(options.headers || {})
+  };
+
+  if (apiToken) headers["X-Session-Token"] = apiToken;
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+
+  let response;
+  try {
+    response = await fetch(`${IDBIO_BRIDGE_URL}${path}`, {
+      method: options.method || "GET",
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+  } catch (error) {
+    throw new Error("Ponte local nao encontrada. Abra o sistema pelo arquivo abrir-formulario.bat.");
+  }
+
+  const payload = await response.json();
+  if (response.status === 401) {
+    apiToken = "";
+    sessionStorage.removeItem(API_TOKEN_KEY);
+    sessionStorage.removeItem(RH_ACCESS_KEY);
+    lockApp();
+  }
+
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.message || "Falha ao comunicar com o sistema local.");
+  }
+
+  return payload;
+}
+
+async function refreshEmployees() {
+  const payload = await apiRequest("/employees");
+  employeesCache = { ...DEFAULT_EMPLOYEES_BY_ID, ...payload };
+}
+
+async function refreshRecords() {
+  recordsCache = await apiRequest("/records");
+}
+
 function unlockRhPanel() {
   sessionStorage.setItem(RH_ACCESS_KEY, "authorized");
   rhLock.hidden = true;
@@ -192,6 +283,7 @@ function unlockRhPanel() {
   rhPanelContent.classList.remove("locked");
   rhPanelContent.classList.add("unlocked");
   rhLockStatus.textContent = "";
+  renderEmployeeRegistry();
 }
 
 function lockRhPanel() {
@@ -202,49 +294,32 @@ function lockRhPanel() {
   rhPanelContent.setAttribute("aria-disabled", "true");
   rhPanelContent.classList.add("locked");
   rhPanelContent.classList.remove("unlocked");
+  rhLockStatus.textContent = "";
   recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Valide uma digital admin para visualizar os registros.</p>';
+  employeeRegistryList.innerHTML = "";
+  employeeRegistryStatus.textContent = "";
 }
 
 function setBiometricBusy(isBusy) {
-  rhRegisterFingerprintButton.disabled = isBusy;
-  rhFingerprintButton.disabled = isBusy;
+  isBiometricReading = isBusy;
+  if (loginBiometricButton) loginBiometricButton.disabled = isBusy;
 }
 
 async function callIdBioBridge(path) {
-  let response;
-  try {
-    response = await fetch(`${IDBIO_BRIDGE_URL}${path}`, { method: "POST" });
-  } catch (error) {
-    throw new Error("Ponte local do iDBio nao encontrada. Abra o sistema pelo arquivo abrir-formulario.bat.");
-  }
-  const payload = await response.json();
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.message || "Falha ao comunicar com o leitor iDBio.");
-  }
-  return payload;
-}
-
-async function registerRhFingerprint() {
-  setBiometricBusy(true);
-  rhLockStatus.textContent = "Aguardando digital admin no leitor Control iD...";
-
-  try {
-    const result = await callIdBioBridge("/register");
-    rhLockStatus.textContent = `${result.message} Agora valide a digital admin para acessar o painel.`;
-  } catch (error) {
-    rhLockStatus.textContent = `Nao foi possivel cadastrar a digital: ${error.message}`;
-  } finally {
-    setBiometricBusy(false);
-  }
+  return apiRequest(path, { method: "POST" });
 }
 
 async function validateRhFingerprint() {
+  if (hasRhAccess() || isBiometricReading) return;
+
   setBiometricBusy(true);
-  rhLockStatus.textContent = "Lendo digital admin no leitor Control iD...";
+  rhLockStatus.textContent = "Coloque a digital admin no leitor...";
 
   try {
     await callIdBioBridge("/verify");
+    if (activeTabId !== "painel-rh") return;
     unlockRhPanel();
+    await refreshRecords();
     renderRecords();
   } catch (error) {
     rhLockStatus.textContent = `Digital nao validada: ${error.message}`;
@@ -253,9 +328,71 @@ async function validateRhFingerprint() {
   }
 }
 
+async function registerRhFingerprint() {
+  clearAutoLoginFingerprint();
+
+  const statusTarget = document.body.classList.contains("login-locked")
+    ? loginBiometricStatus
+    : rhLock.hidden
+      ? employeeRegistryStatus
+      : rhLockStatus;
+
+  if (isBiometricReading) {
+    statusTarget.textContent = "Aguarde a leitura atual terminar para cadastrar a digital.";
+    return;
+  }
+
+  setBiometricBusy(true);
+  statusTarget.textContent = "Coloque a digital admin no leitor para cadastrar...";
+
+  try {
+    const result = await callIdBioBridge("/register");
+    statusTarget.textContent = result.message || "Digital admin cadastrada.";
+    if (apiToken && activeTabId === "painel-rh") {
+      lockRhPanel();
+      rhLockStatus.textContent = "Digital admin cadastrada. Coloque a digital para liberar o Painel RH.";
+    } else if (document.body.classList.contains("login-locked")) {
+      statusTarget.textContent = "Digital admin cadastrada. Coloque o dedo novamente para entrar.";
+      scheduleAutoLoginFingerprint(1000);
+    }
+  } catch (error) {
+    statusTarget.textContent = `Nao foi possivel cadastrar a digital: ${error.message}`;
+  } finally {
+    setBiometricBusy(false);
+  }
+}
+
+async function loginWithFingerprint(options = {}) {
+  if (isBiometricReading) return;
+
+  setBiometricBusy(true);
+  loginError.classList.remove("visible");
+  loginBiometricStatus.textContent = options.automatic
+    ? "Aguardando digital admin no leitor..."
+    : "Coloque a digital admin no leitor...";
+
+  try {
+    const payload = await apiRequest("/login/biometric", { method: "POST" });
+    await setAuthenticated(payload.token);
+    loginBiometricStatus.textContent = "";
+  } catch (error) {
+    loginBiometricStatus.textContent = `Digital nao validada: ${error.message}`;
+  } finally {
+    setBiometricBusy(false);
+    if (options.automatic && !apiToken && document.body.classList.contains("login-locked")) {
+      scheduleAutoLoginFingerprint(1200);
+    }
+  }
+}
+
 function setActiveTab(tabId) {
+  const previousTabId = activeTabId;
+  activeTabId = tabId;
+
   tabPanels.forEach((panel) => {
-    panel.classList.toggle("active", panel.id === tabId);
+    const isActive = panel.id === tabId;
+    panel.classList.toggle("active", isActive);
+    panel.hidden = !isActive;
   });
 
   tabTriggers.forEach((trigger) => {
@@ -267,13 +404,12 @@ function setActiveTab(tabId) {
   });
 
   if (sidebar.classList.contains("open")) sidebar.classList.remove("open");
-  if (tabId === "painel-rh" && !hasRhAccess()) {
-    rhLockStatus.textContent = "Painel do RH bloqueado. Valide uma digital admin cadastrada.";
+  if (previousTabId === "painel-rh" && tabId !== "painel-rh") {
+    lockRhPanel();
   }
-}
-
-function approvalsAreComplete(data) {
-  return ["employeeApproval", "managerApproval", "hrApproval"].every((name) => data.get(name) === "on");
+  if (tabId === "painel-rh" && !hasRhAccess()) {
+    validateRhFingerprint();
+  }
 }
 
 function getSelectedReturnStatus() {
@@ -314,6 +450,14 @@ function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function setField(name, value) {
   const field = form.elements[name];
   if (field) field.value = value || "";
@@ -321,6 +465,15 @@ function setField(name, value) {
 
 function clearEmployeeFields() {
   ["employeeName", "department", "role", "managerName", "registeredSchedule"].forEach((name) => setField(name, ""));
+}
+
+function loadEmployees() {
+  return employeesCache;
+}
+
+async function saveEmployees(employees) {
+  employeesCache = employees;
+  await apiRequest("/employees", { method: "POST", body: employees });
 }
 
 function setRequestSectionEnabled(enabled) {
@@ -331,7 +484,7 @@ function setRequestSectionEnabled(enabled) {
 }
 
 function fillEmployeeById(employeeId) {
-  const employee = EMPLOYEES_BY_ID[employeeId];
+  const employee = loadEmployees()[employeeId];
 
   if (!employee) {
     clearEmployeeFields();
@@ -347,12 +500,49 @@ function fillEmployeeById(employeeId) {
   lookupStatus.className = "found";
 }
 
-function loadRecords() {
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+function renderEmployeeRegistry() {
+  if (!hasRhAccess()) return;
+
+  const employees = loadEmployees();
+  const entries = Object.entries(employees).sort(([a], [b]) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  employeeRegistryList.innerHTML = "";
+
+  if (!entries.length) {
+    employeeRegistryList.innerHTML = '<p class="empty-state">Nenhum funcionario cadastrado.</p>';
+    return;
+  }
+
+  entries.forEach(([employeeId, employee]) => {
+    const item = document.createElement("article");
+    item.className = "employee-item";
+    item.innerHTML = `
+      <div>
+        <strong>${escapeHtml(employee.employeeName)}</strong>
+        <p>${escapeHtml(employeeId)} · ${escapeHtml(employee.department)} · ${escapeHtml(employee.role)}</p>
+        <small>${escapeHtml(employee.managerName)} · ${escapeHtml(employee.registeredSchedule)}</small>
+      </div>
+      <div class="employee-item-actions">
+        <button class="btn-secondary" type="button" data-action="edit-employee" data-employee-id="${escapeHtml(employeeId)}">Editar</button>
+        <button class="btn-secondary danger-action" type="button" data-action="delete-employee" data-employee-id="${escapeHtml(employeeId)}">Excluir</button>
+      </div>
+    `;
+    employeeRegistryList.append(item);
+  });
 }
 
-function saveRecords(records) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+function fillEmployeeRegistryForm(employeeId) {
+  const employee = loadEmployees()[employeeId];
+  if (!employee) return;
+
+  employeeRegistryForm.elements.employeeId.value = employeeId;
+  Object.entries(employee).forEach(([name, value]) => {
+    if (employeeRegistryForm.elements[name]) employeeRegistryForm.elements[name].value = value;
+  });
+  employeeRegistryStatus.textContent = "Cadastro carregado para edicao.";
+}
+
+function loadRecords() {
+  return recordsCache;
 }
 
 function pad(value) {
@@ -407,12 +597,7 @@ function createEmailLink(record) {
     `Retorno: ${record.returnStatus || "Vai retornar"}`,
     `Horario de retorno no ponto: ${record.returnTime || "-"}`,
     `Horario registrado no Control ID: ${record.controlIdTime || "-"}`,
-    `Motivo: ${record.reason}`,
-    "",
-    "Assinaturas digitais:",
-    `Funcionario: ${record.employeeApproval ? "assinado" : "pendente"}`,
-    `Chefe do setor: ${record.managerApproval ? "assinado" : "pendente"}`,
-    `RH: ${record.hrApproval ? "assinado" : "pendente"}`
+    `Motivo: ${record.reason}`
   ].join("\n");
 
   return `mailto:${RH_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -536,29 +721,28 @@ sidebarToggle.addEventListener("click", () => {
   sidebar.classList.toggle("open");
 });
 
+themeToggle.addEventListener("click", toggleTheme);
+
 tabTriggers.forEach((trigger) => {
   trigger.addEventListener("click", (event) => {
     event.preventDefault();
-    setActiveTab(trigger.dataset.tabTarget);
+    const tabId = trigger.dataset.tabTarget;
+    if (tabId !== "painel-rh" && hasRhAccess()) {
+      lockRhPanel();
+    }
+    setActiveTab(tabId);
   });
 });
 
-signatureSubmit.addEventListener("click", () => {
+rhPanelExitButton.addEventListener("click", () => {
+  lockRhPanel();
   setActiveTab("nova-solicitacao");
 });
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   let data = new FormData(form);
-
-  if (!approvalsAreComplete(data)) {
-    signatureWarning.textContent = "Todas as assinaturas precisam ser marcadas para salvar.";
-    setActiveTab("assinaturas");
-    return;
-  }
-
-  signatureWarning.textContent = "";
 
   if (!controlIdTime) {
     controlIdTime = currentClockTime();
@@ -567,7 +751,6 @@ form.addEventListener("submit", (event) => {
   }
 
   data = new FormData(form);
-  const records = loadRecords();
   const id = `SOL-${Date.now()}`;
   const record = {
     id,
@@ -585,14 +768,17 @@ form.addEventListener("submit", (event) => {
     returnStatus: getFormValue(data, "returnStatus") || "Vai retornar",
     reason: getFormValue(data, "reason"),
     controlIdTime,
-    employeeApproval: data.get("employeeApproval") === "on",
-    managerApproval: data.get("managerApproval") === "on",
-    hrApproval: data.get("hrApproval") === "on",
     createdAt: new Date().toISOString()
   };
 
-  records.push(record);
-  saveRecords(records);
+  try {
+    await apiRequest("/records/add", { method: "POST", body: record });
+    recordsCache.push(record);
+  } catch (error) {
+    saveStatus.textContent = error.message;
+    return;
+  }
+
   requestId.textContent = id;
   saveStatus.textContent = "Salvo para conferencia do RH";
   isSaving = true;
@@ -615,13 +801,89 @@ form.addEventListener("reset", () => {
     lookupStatus.textContent = "Digite a matricula para buscar o cadastro.";
     lookupStatus.className = "";
     saveStatus.textContent = "Nao enviado";
-    signatureWarning.textContent = "";
     requestId.textContent = "Rascunho";
   }, 0);
 });
 
 departmentFilter.addEventListener("change", renderRecords);
 employeeFilter.addEventListener("input", renderRecords);
+
+employeeRegistryForm.elements.employeeId.addEventListener("input", () => {
+  employeeRegistryForm.elements.employeeId.value = onlyDigits(employeeRegistryForm.elements.employeeId.value);
+});
+
+employeeRegistryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!hasRhAccess()) {
+    employeeRegistryStatus.textContent = "Valide uma digital admin antes de cadastrar funcionarios.";
+    return;
+  }
+
+  const data = new FormData(employeeRegistryForm);
+  const employeeId = onlyDigits(data.get("employeeId"));
+  if (!employeeId) {
+    employeeRegistryStatus.textContent = "Informe a matricula do funcionario.";
+    return;
+  }
+
+  const employees = loadEmployees();
+  employees[employeeId] = {
+    employeeName: getFormValue(data, "employeeName"),
+    department: getFormValue(data, "department"),
+    role: getFormValue(data, "role"),
+    managerName: getFormValue(data, "managerName"),
+    registeredSchedule: getFormValue(data, "registeredSchedule")
+  };
+  try {
+    await saveEmployees(employees);
+    employeeRegistryStatus.textContent = "Funcionario salvo no cadastro.";
+  } catch (error) {
+    employeeRegistryStatus.textContent = error.message;
+    return;
+  }
+
+  employeeRegistryForm.reset();
+  renderEmployeeRegistry();
+
+  if (employeeIdInput.value === employeeId) fillEmployeeById(employeeId);
+});
+
+employeeRegistryForm.addEventListener("reset", () => {
+  window.setTimeout(() => {
+    employeeRegistryStatus.textContent = "";
+  }, 0);
+});
+
+employeeRegistryList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-action]");
+  if (!button || !hasRhAccess()) return;
+
+  const employeeId = button.dataset.employeeId;
+  if (button.dataset.action === "edit-employee") {
+    fillEmployeeRegistryForm(employeeId);
+    employeeRegistryForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  if (button.dataset.action === "delete-employee") {
+    const employees = loadEmployees();
+    const employee = employees[employeeId];
+    if (!employee) return;
+    if (!confirm(`Excluir o cadastro de ${employee.employeeName}?`)) return;
+    delete employees[employeeId];
+    try {
+      await saveEmployees(employees);
+    } catch (error) {
+      employeeRegistryStatus.textContent = error.message;
+      return;
+    }
+
+    employeeRegistryStatus.textContent = "Funcionario removido do cadastro.";
+    renderEmployeeRegistry();
+
+    if (employeeIdInput.value === employeeId) fillEmployeeById(employeeId);
+  }
+});
 
 loginUsername.addEventListener("input", () => {
   loginError.classList.remove("visible");
@@ -661,21 +923,24 @@ passwordToggle.addEventListener("click", () => {
   passwordToggle.setAttribute("aria-label", isShowing ? "Mostrar senha" : "Ocultar senha");
 });
 
-clearStorage.addEventListener("click", () => {
+clearStorage.addEventListener("click", async () => {
   if (!hasRhAccess()) {
     setActiveTab("painel-rh");
-    rhLockStatus.textContent = "Valide uma digital admin antes de limpar registros.";
     return;
   }
   if (!confirm("Deseja apagar todos os registros salvos neste navegador?")) return;
-  saveRecords([]);
+  try {
+    await apiRequest("/records/clear", { method: "POST" });
+    recordsCache = [];
+  } catch (error) {
+    rhLockStatus.textContent = error.message;
+    return;
+  }
+
   renderRecords();
 });
 
-rhRegisterFingerprintButton.addEventListener("click", registerRhFingerprint);
-rhFingerprintButton.addEventListener("click", validateRhFingerprint);
-
-loginForm.addEventListener("submit", (event) => {
+loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   loginSubmit.disabled = true;
   loginSubmit.textContent = "Autenticando...";
@@ -683,25 +948,61 @@ loginForm.addEventListener("submit", (event) => {
   const username = String(data.get("username") || "").trim().toLowerCase();
   const password = String(data.get("password") || "");
 
-  if (username === LOGIN_USER && password === LOGIN_PASSWORD) {
+  try {
+    const payload = await apiRequest("/login", {
+      method: "POST",
+      body: { username, password }
+    });
     loginSubmit.textContent = "Entrar";
-    setAuthenticated();
+    await setAuthenticated(payload.token);
+    syncLoginSubmit();
     return;
+  } catch (error) {
+    loginError.textContent = error.message;
+    loginError.classList.add("visible");
   }
 
-  loginError.textContent = "Usuario ou senha invalidos.";
-  loginError.classList.add("visible");
   loginSubmit.textContent = "Entrar";
   syncLoginSubmit();
 });
 
+loginBiometricButton.addEventListener("click", () => {
+  clearAutoLoginFingerprint();
+  loginWithFingerprint();
+});
+
+rhRegisterFingerprintButtons.forEach((button) => {
+  button.addEventListener("click", registerRhFingerprint);
+});
+
 logoutButton.addEventListener("click", logout);
 
-document.querySelector('[name="requestDate"]').value = todayDate();
-initMatrixBackground();
-syncLoginSubmit();
-setRequestSectionEnabled(false);
-if (hasRhAccess()) unlockRhPanel();
-else lockRhPanel();
-renderRecords();
-if (isAuthenticated()) unlockApp();
+async function initApp() {
+  applyTheme(localStorage.getItem(THEME_KEY) || "light");
+  tabPanels.forEach((panel) => {
+    panel.hidden = !panel.classList.contains("active");
+  });
+  document.querySelector('[name="requestDate"]').value = todayDate();
+  initMatrixBackground();
+  syncLoginSubmit();
+  setRequestSectionEnabled(false);
+  lockRhPanel();
+  renderRecords();
+
+  if (!apiToken) {
+    scheduleAutoLoginFingerprint();
+    return;
+  }
+
+  try {
+    const session = await apiRequest("/session");
+    await refreshEmployees();
+    unlockApp();
+  } catch (error) {
+    apiToken = "";
+    sessionStorage.removeItem(API_TOKEN_KEY);
+    lockApp();
+  }
+}
+
+initApp();
