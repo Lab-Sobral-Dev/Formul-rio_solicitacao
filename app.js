@@ -87,6 +87,8 @@ const DEPARTMENTS = [
   "Guarita"
 ];
 
+const DEFAULT_REGISTERED_SCHEDULE = "08:00 as 12:00 e 13:00 as 17:48";
+
 const DEFAULT_EMPLOYEES_BY_ID = {
   "1024": {
     employeeName: "Maria Santos",
@@ -318,7 +320,7 @@ function unlockRhPanel() {
   rhPanelContent.classList.add("unlocked");
   rhLockStatus.textContent = "";
   renderEmployeeRegistry();
-  fillRegisteredScheduleWithBrasiliaTime();
+  fillRegisteredScheduleAutomatically();
 }
 
 function lockRhPanel() {
@@ -605,8 +607,7 @@ function todayDate() {
 }
 
 function currentClockTime() {
-  const now = new Date();
-  return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return currentBrasiliaTime();
 }
 
 function currentBrasiliaTime() {
@@ -618,10 +619,10 @@ function currentBrasiliaTime() {
   }).format(new Date());
 }
 
-function fillRegisteredScheduleWithBrasiliaTime(force = false) {
+function fillRegisteredScheduleAutomatically(force = false) {
   const field = employeeRegistryForm?.elements.registeredSchedule;
   if (!field || (!force && field.value.trim())) return;
-  field.value = currentBrasiliaTime();
+  field.value = DEFAULT_REGISTERED_SCHEDULE;
 }
 
 function fillPointTime(pointTime) {
@@ -910,7 +911,7 @@ employeeRegistryForm.addEventListener("submit", async (event) => {
   }
 
   employeeRegistryForm.reset();
-  fillRegisteredScheduleWithBrasiliaTime(true);
+  fillRegisteredScheduleAutomatically(true);
   populateDepartmentOptions();
   renderEmployeeRegistry();
   renderRecords();
@@ -921,7 +922,7 @@ employeeRegistryForm.addEventListener("submit", async (event) => {
 employeeRegistryForm.addEventListener("reset", () => {
   window.setTimeout(() => {
     employeeRegistryStatus.textContent = "";
-    fillRegisteredScheduleWithBrasiliaTime(true);
+    fillRegisteredScheduleAutomatically(true);
   }, 0);
 });
 
@@ -1056,7 +1057,7 @@ async function initApp() {
     panel.hidden = !panel.classList.contains("active");
   });
   populateDepartmentOptions();
-  fillRegisteredScheduleWithBrasiliaTime();
+  fillRegisteredScheduleAutomatically();
   document.querySelector('[name="requestDate"]').value = todayDate();
   initMatrixBackground();
   syncLoginSubmit();
