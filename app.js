@@ -1,5 +1,8 @@
 const RH_ACCESS_KEY = "rhPanelAccess";
 const THEME_KEY = "rhSobralTheme";
+const SUPABASE_URL = "https://dlrqwyidlgpnfqmdvrjo.supabase.co";
+// Chave "anon" (publica) do projeto: Supabase > Project Settings > API. Vazia = usa localStorage.
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRscnF3eWlkbGdwbmZxbWR2cmpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NzY3MjEsImV4cCI6MjEwNzA1MjcyMX0.BQynUZg_-dURNCH29BSRqbUr4GiOXmknNylS8CFmgvM";
 const EMPLOYEES_KEY = "rhSobralEmployees";
 const RECORDS_KEY = "rhSobralRecords";
 // Senha de teste: rh123 (somente o hash SHA-256 fica no codigo). Trocar antes de publicar.
@@ -127,9 +130,125 @@ function hasRhAccess() {
   return sessionStorage.getItem(RH_ACCESS_KEY) === "authorized";
 }
 
-// Armazenamento local (localStorage) no lugar do servidor, enquanto o backend nao existe.
-// Ao integrar ao outro sistema, troque o corpo desta funcao por chamadas ao backend real.
+const EMPLOYEE_COLUMNS = {
+  employeeName: "employee_name",
+  department: "department",
+  role: "role",
+  managerName: "manager_name",
+  registeredSchedule: "registered_schedule"
+};
+
+const RECORD_COLUMNS = {
+  id: "id",
+  employeeName: "employee_name",
+  employeeId: "employee_id",
+  department: "department",
+  role: "role",
+  managerName: "manager_name",
+  registeredSchedule: "registered_schedule",
+  requestType: "request_type",
+  requestDate: "request_date",
+  currentTime: "current_time_value",
+  requestedTime: "requested_time",
+  returnTime: "return_time",
+  returnStatus: "return_status",
+  reason: "reason",
+  controlIdTime: "control_id_time",
+  createdAt: "created_at"
+};
+
+function mapKeys(source, columns) {
+  const result = {};
+  Object.entries(columns).forEach(([appKey, column]) => {
+    if (source[appKey] !== undefined) result[column] = source[appKey];
+  });
+  return result;
+}
+
+function unmapKeys(row, columns) {
+  const result = {};
+  Object.entries(columns).forEach(([appKey, column]) => {
+    if (row[column] !== undefined && row[column] !== null) result[appKey] = row[column];
+  });
+  return result;
+}
+
+async function supabaseRequest(table, { method = "GET", query = "", body, upsertOn } = {}) {
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+  };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (upsertOn) headers.Prefer = "resolution=merge-duplicates,return=minimal";
+  else if (method !== "GET") headers.Prefer = "return=minimal";
+
+  const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
+  let response;
+  try {
+    response = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch (error) {
+    throw new Error("Nao foi possivel conectar ao banco de dados. Verifique a internet.");
+  }
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      detail = (await response.json()).message || "";
+    } catch (error) {
+      detail = "";
+    }
+    throw new Error(`Falha no banco de dados (${response.status}). ${detail}`.trim());
+  }
+
+  return method === "GET" ? response.json() : null;
+}
+
+async function supabaseApi(path, options) {
+  const method = options.method || "GET";
+
+  if (path === "/employees") {
+    if (method !== "POST") {
+      const rows = await supabaseRequest("employees");
+      return Object.fromEntries(rows.map((row) => [row.employee_id, unmapKeys(row, EMPLOYEE_COLUMNS)]));
+    }
+
+    const employees = options.body;
+    const ids = Object.keys(employees);
+    const existing = await supabaseRequest("employees", { query: "?select=employee_id" });
+    const removed = existing.map((row) => row.employee_id).filter((id) => !ids.includes(id));
+    if (removed.length) {
+      const list = removed.map((id) => `"${id}"`).join(",");
+      await supabaseRequest("employees", { method: "DELETE", query: `?employee_id=in.(${encodeURIComponent(list)})` });
+    }
+    if (ids.length) {
+      const rows = ids.map((id) => ({ employee_id: id, ...mapKeys(employees[id], EMPLOYEE_COLUMNS) }));
+      await supabaseRequest("employees", { method: "POST", query: "?on_conflict=employee_id", body: rows, upsertOn: true });
+    }
+    return { ok: true };
+  }
+
+  if (path === "/records") {
+    const rows = await supabaseRequest("records", { query: "?order=created_at.asc" });
+    return rows.map((row) => unmapKeys(row, RECORD_COLUMNS));
+  }
+
+  if (path === "/records/add") {
+    await supabaseRequest("records", { method: "POST", body: mapKeys(options.body, RECORD_COLUMNS) });
+    return { ok: true };
+  }
+
+  if (path === "/records/clear") {
+    await supabaseRequest("records", { method: "DELETE", query: "?id=not.is.null" });
+    return { ok: true };
+  }
+
+  throw new Error(`Rota nao encontrada: ${path}`);
+}
+
+// Sem chave do Supabase, usa o localStorage do navegador (apenas para teste).
 async function apiRequest(path, options = {}) {
+  if (SUPABASE_ANON_KEY) return supabaseApi(path, options);
+
   const readStored = (key, fallback) => {
     try {
       return JSON.parse(localStorage.getItem(key)) ?? fallback;
