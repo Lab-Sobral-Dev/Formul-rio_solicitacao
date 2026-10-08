@@ -1,20 +1,7 @@
 $ErrorActionPreference = "SilentlyContinue"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$bridgeConfig = Join-Path $root "idbio-bridge\bin\config.json"
-$bridgePort = 5055
 $webPort = 8000
-
-if (Test-Path $bridgeConfig) {
-  try {
-    $config = Get-Content $bridgeConfig -Raw | ConvertFrom-Json
-    if ($config.httpPort) {
-      $bridgePort = [int]$config.httpPort
-    }
-  } catch {
-    $bridgePort = 5055
-  }
-}
 
 function Test-LocalPort($port) {
   try {
@@ -29,14 +16,6 @@ function Test-LocalPort($port) {
   } catch {
     return $false
   }
-}
-
-if (-not (Test-LocalPort $bridgePort)) {
-  $bridgeExe = Join-Path $root "idbio-bridge\bin\IdBioBridge.exe"
-  $bridgeWorkdir = Split-Path -Parent $bridgeExe
-  $bridgeOut = Join-Path $root "idbio-bridge\bridge.out.log"
-  $bridgeErr = Join-Path $root "idbio-bridge\bridge.err.log"
-  Start-Process -FilePath $bridgeExe -WorkingDirectory $bridgeWorkdir -RedirectStandardOutput $bridgeOut -RedirectStandardError $bridgeErr -WindowStyle Hidden
 }
 
 if (-not (Test-LocalPort $webPort)) {

@@ -3,91 +3,11 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:5055; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self' mailto:">
-    <title>Matrix Standard Login | RH Sobral</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self' mailto:">
+    <title>RH Sobral | Solicitacoes</title>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body class="login-locked">
-    <main class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
-      <canvas id="bg-canvas" aria-hidden="true"></canvas>
-      <div class="login-overlay" aria-hidden="true"></div>
-      <div class="deco-corner deco-tl" aria-hidden="true"></div>
-      <div class="deco-corner deco-tr" aria-hidden="true"></div>
-      <div class="deco-corner deco-bl" aria-hidden="true"></div>
-      <div class="deco-corner deco-br" aria-hidden="true"></div>
-      <svg class="deco-lines" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-        <line x1="0" y1="300" x2="400" y2="0" />
-        <line x1="0" y1="550" x2="550" y2="0" />
-        <line x1="80" y1="900" x2="800" y2="200" />
-        <line x1="0" y1="750" x2="750" y2="0" />
-        <circle cx="200" cy="150" r="90" />
-        <circle cx="200" cy="150" r="140" />
-        <circle cx="1300" cy="780" r="100" />
-        <circle cx="1300" cy="780" r="160" />
-      </svg>
-
-      <section class="brand-block" aria-hidden="true">
-        <div class="brand-icons">
-          <div class="matrix-logo">RH</div>
-          <span class="brand-sep">/</span>
-          <div class="matrix-logo matrix-logo-small">TS</div>
-        </div>
-        <div class="brand-text">
-          <h1>RH SOBRAL</h1>
-          <p class="brand-tagline">MATRIX ACCESS STANDARD</p>
-        </div>
-      </section>
-
-      <section class="login-scene">
-        <div class="login-card">
-          <div class="card-header">
-            <div class="login-symbol">RH</div>
-          </div>
-          <div class="card-body">
-            <div>
-              <h2 id="loginTitle">Entrar no sistema</h2>
-              <p class="card-subtitle">Portal interno de solicitacoes</p>
-            </div>
-            <div class="card-divider" aria-hidden="true"></div>
-            <form class="login-form" id="loginForm">
-              <div class="form-group">
-                <div class="form-label-row">
-                  <label class="form-label" for="loginUsername">Usuario</label>
-                  <button class="field-hint" type="button" id="userHintButton" aria-label="Ajuda do usuario">?</button>
-                </div>
-                <span class="field-hint-tooltip" id="userHintTooltip">Use seu usuario interno do RH</span>
-                <input class="form-input" id="loginUsername" name="username" autocomplete="username" required placeholder="Digite seu usuario">
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="loginPassword">Senha</label>
-                <div class="password-wrapper">
-                  <input class="form-input" id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="Digite sua senha">
-                  <button class="password-toggle" type="button" id="passwordToggle" aria-label="Mostrar senha">
-                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke="currentColor" stroke-width="1.8"/>
-                      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <p class="caps-lock-warning" id="capsLockWarning" hidden>Caps Lock ativo</p>
-              <p class="login-error" id="loginError" aria-live="polite"></p>
-              <button class="btn-submit" type="submit" id="loginSubmit" disabled>Entrar</button>
-            </form>
-            <div class="login-biometric">
-              <div class="login-biometric-divider"><span>ou</span></div>
-              <button class="biometric-login-button" type="button" id="loginBiometricButton">
-                <span class="fingerprint-mark login-fingerprint-mark" aria-hidden="true"></span>
-                <span>Entrar com digital</span>
-              </button>
-              <p class="login-biometric-status" id="loginBiometricStatus" aria-live="polite"></p>
-            </div>
-            <p class="card-footer">Lab Sobral / Theodoro Sobral</p>
-          </div>
-        </div>
-      </section>
-    </main>
-
+  <body>
     <aside class="sidebar">
       <div class="sb-brand">
         <div class="sb-dot"></div>
@@ -109,7 +29,6 @@
           </div>
         </div>
         <button class="sb-logout" type="button" id="clearStorage">Limpar registros</button>
-        <button class="sb-logout logout-action" type="button" id="logoutButton">Sair</button>
       </div>
     </aside>
 
@@ -313,6 +232,11 @@
 
           <aside class="card side-card tab-panel rh-tab-locked" id="painel-rh">
             <div class="rh-lock" id="rhLock">
+              <form class="rh-lock-form" id="rhLockForm" autocomplete="off">
+                <label class="rh-lock-label" for="rhPasswordInput">Senha do Painel RH</label>
+                <input class="rh-lock-input" id="rhPasswordInput" type="password" autocomplete="off" placeholder="Digite a senha" required>
+                <button class="btn-primary" type="submit">Entrar no painel</button>
+              </form>
               <p class="rh-lock-status" id="rhLockStatus" aria-live="polite"></p>
             </div>
 
@@ -324,7 +248,6 @@
                   <p>Gerencie funcionarios cadastrados e acompanhe as solicitacoes recebidas.</p>
                 </div>
                 <div class="actions rh-panel-actions">
-                  <button class="btn-secondary" type="button" data-register-fingerprint>Cadastrar digital admin</button>
                   <button class="btn-secondary" type="button" id="rhPanelExitButton">Sair do painel RH</button>
                 </div>
               </header>

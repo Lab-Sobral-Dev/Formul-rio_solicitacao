@@ -1,22 +1,11 @@
-const RH_ACCESS_KEY = "rhCoordinatorFingerprint";
-const API_TOKEN_KEY = "rhSobralApiToken";
+const RH_ACCESS_KEY = "rhPanelAccess";
 const THEME_KEY = "rhSobralTheme";
-const IDBIO_BRIDGE_URL = "http://127.0.0.1:5055";
+const EMPLOYEES_KEY = "rhSobralEmployees";
+const RECORDS_KEY = "rhSobralRecords";
+// Senha de teste: rh123 (somente o hash SHA-256 fica no codigo). Trocar antes de publicar.
+const RH_PASSWORD_HASH = "b655f90cf354b94f9be03c3b3e7a734e827b2fa3fd41aba3c13d0d2c2e9b8cf2";
 const RH_EMAIL = "rh@empresa.com.br";
-const DEFAULT_API_TIMEOUT_MS = 8000;
-const BIOMETRIC_API_TIMEOUT_MS = 45000;
 
-const loginForm = document.querySelector("#loginForm");
-const loginError = document.querySelector("#loginError");
-const loginUsername = document.querySelector("#loginUsername");
-const loginPassword = document.querySelector("#loginPassword");
-const loginSubmit = document.querySelector("#loginSubmit");
-const loginBiometricButton = document.querySelector("#loginBiometricButton");
-const loginBiometricStatus = document.querySelector("#loginBiometricStatus");
-const passwordToggle = document.querySelector("#passwordToggle");
-const capsLockWarning = document.querySelector("#capsLockWarning");
-const userHintButton = document.querySelector("#userHintButton");
-const userHintTooltip = document.querySelector("#userHintTooltip");
 const tabTriggers = document.querySelectorAll("[data-tab-target]");
 const tabPanels = document.querySelectorAll(".tab-panel");
 const form = document.querySelector("#requestForm");
@@ -29,13 +18,13 @@ const requestId = document.querySelector("#requestId");
 const departmentFilter = document.querySelector("#departmentFilter");
 const employeeFilter = document.querySelector("#employeeFilter");
 const clearStorage = document.querySelector("#clearStorage");
-const logoutButton = document.querySelector("#logoutButton");
 const rhLock = document.querySelector("#rhLock");
 const rhPanelContent = document.querySelector("#rhPanelContent");
 const rhPanelExitButton = document.querySelector("#rhPanelExitButton");
 const rhTab = document.querySelector("#painel-rh");
 const rhNavItem = document.querySelector('[data-tab-target="painel-rh"]');
-const rhRegisterFingerprintButtons = document.querySelectorAll("[data-register-fingerprint]");
+const rhLockForm = document.querySelector("#rhLockForm");
+const rhPasswordInput = document.querySelector("#rhPasswordInput");
 const rhLockStatus = document.querySelector("#rhLockStatus");
 const employeeRegistryForm = document.querySelector("#employeeRegistryForm");
 const employeeRegistryStatus = document.querySelector("#employeeRegistryStatus");
@@ -117,12 +106,9 @@ const DEFAULT_EMPLOYEES_BY_ID = {
 
 let controlIdTime = "";
 let isSaving = false;
-let isBiometricReading = false;
 let activeTabId = document.querySelector(".tab-panel.active")?.id || "nova-solicitacao";
-let apiToken = sessionStorage.getItem(API_TOKEN_KEY) || "";
 let employeesCache = { ...DEFAULT_EMPLOYEES_BY_ID };
 let recordsCache = [];
-let autoLoginFingerprintTimer = 0;
 
 function applyTheme(theme) {
   const isDark = theme === "dark";
@@ -137,167 +123,45 @@ function toggleTheme() {
   applyTheme(nextTheme);
 }
 
-function unlockApp() {
-  document.body.classList.remove("login-locked");
-  clearAutoLoginFingerprint();
-}
-
-function lockApp() {
-  document.body.classList.add("login-locked");
-}
-
-function isAuthenticated() {
-  return Boolean(apiToken);
-}
-
-async function setAuthenticated(token) {
-  apiToken = token;
-  sessionStorage.setItem(API_TOKEN_KEY, token);
-  loginError.classList.remove("visible");
-  await refreshEmployees();
-  populateDepartmentOptions();
-  unlockApp();
-}
-
-async function logout() {
-  if (apiToken) {
-    try {
-      await apiRequest("/logout", { method: "POST" });
-    } catch (error) {
-      // The local session is cleared even if the bridge is already closed.
-    }
-  }
-  apiToken = "";
-  sessionStorage.removeItem(API_TOKEN_KEY);
-  sessionStorage.removeItem(RH_ACCESS_KEY);
-  loginForm.reset();
-  loginError.textContent = "";
-  loginError.classList.remove("visible");
-  syncLoginSubmit();
-  lockRhPanel();
-  lockApp();
-}
-
-function syncLoginSubmit() {
-  loginSubmit.disabled = !loginUsername.value.trim() || !loginPassword.value;
-}
-
-function clearAutoLoginFingerprint() {
-  if (!autoLoginFingerprintTimer) return;
-  window.clearTimeout(autoLoginFingerprintTimer);
-  autoLoginFingerprintTimer = 0;
-}
-
-function initMatrixBackground() {
-  const canvas = document.querySelector("#bg-canvas");
-  if (!canvas) return;
-
-  const context = canvas.getContext("2d");
-  const stars = Array.from({ length: 140 }, () => ({
-    x: Math.random(),
-    y: Math.random(),
-    r: Math.random() * 1.2 + 0.2,
-    a: Math.random() * 0.4 + 0.05
-  }));
-  const nebulae = [
-    { x: 0.18, y: 0.3, r: 0.28, c: "rgba(15,40,90," },
-    { x: 0.72, y: 0.68, r: 0.22, c: "rgba(60,15,40," }
-  ];
-  let tick = 0;
-
-  function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-
-  function paintStars() {
-    const width = canvas.width;
-    const height = canvas.height;
-    stars.forEach((star) => {
-      const flicker = star.a + Math.sin(tick * 2 + star.x * 100) * 0.02;
-      context.beginPath();
-      context.arc(star.x * width, star.y * height, star.r, 0, Math.PI * 2);
-      context.fillStyle = `rgba(200,215,255,${Math.max(0, flicker)})`;
-      context.fill();
-    });
-  }
-
-  function draw() {
-    tick += 0.0008;
-    const width = canvas.width;
-    const height = canvas.height;
-    context.fillStyle = "#050a19";
-    context.fillRect(0, 0, width, height);
-
-    nebulae.forEach((nebula) => {
-      const x = (nebula.x + Math.sin(tick + nebula.r) * 0.015) * width;
-      const y = (nebula.y + Math.cos(tick * 0.7) * 0.012) * height;
-      const gradient = context.createRadialGradient(x, y, 0, x, y, nebula.r * width);
-      gradient.addColorStop(0, `${nebula.c}0.12)`);
-      gradient.addColorStop(1, `${nebula.c}0.00)`);
-      context.fillStyle = gradient;
-      context.fillRect(0, 0, width, height);
-    });
-
-    paintStars();
-    window.requestAnimationFrame(draw);
-  }
-
-  resize();
-  window.addEventListener("resize", resize);
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    context.fillStyle = "#050a19";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    paintStars();
-    return;
-  }
-  draw();
-}
-
 function hasRhAccess() {
   return sessionStorage.getItem(RH_ACCESS_KEY) === "authorized";
 }
 
+// Armazenamento local (localStorage) no lugar do servidor, enquanto o backend nao existe.
+// Ao integrar ao outro sistema, troque o corpo desta funcao por chamadas ao backend real.
 async function apiRequest(path, options = {}) {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_API_TIMEOUT_MS);
-  const headers = {
-    ...(options.headers || {})
-  };
-
-  if (apiToken) headers["X-Session-Token"] = apiToken;
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
-
-  let response;
-  try {
-    response = await fetch(`${IDBIO_BRIDGE_URL}${path}`, {
-      method: options.method || "GET",
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      signal: controller.signal
-    });
-  } catch (error) {
-    if (error.name === "AbortError") {
-      throw new Error("Ponte local demorou para responder. Feche e abra novamente pelo arquivo abrir-formulario.bat.");
+  const readStored = (key, fallback) => {
+    try {
+      return JSON.parse(localStorage.getItem(key)) ?? fallback;
+    } catch (error) {
+      return fallback;
     }
-    throw new Error("Ponte local nao encontrada. Abra o sistema pelo arquivo abrir-formulario.bat.");
-  } finally {
-    window.clearTimeout(timeoutId);
+  };
+  const method = options.method || "GET";
+
+  if (path === "/employees") {
+    if (method === "POST") {
+      localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(options.body));
+      return { ok: true };
+    }
+    return readStored(EMPLOYEES_KEY, {});
   }
 
-  const payload = await response.json();
-  if (response.status === 401) {
-    apiToken = "";
-    sessionStorage.removeItem(API_TOKEN_KEY);
-    sessionStorage.removeItem(RH_ACCESS_KEY);
-    lockApp();
+  if (path === "/records") return readStored(RECORDS_KEY, []);
+
+  if (path === "/records/add") {
+    const records = readStored(RECORDS_KEY, []);
+    records.push(options.body);
+    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+    return { ok: true };
   }
 
-  if (!response.ok || payload.ok === false) {
-    throw new Error(payload.message || "Falha ao comunicar com o sistema local.");
+  if (path === "/records/clear") {
+    localStorage.removeItem(RECORDS_KEY);
+    return { ok: true };
   }
 
-  return payload;
+  throw new Error(`Rota nao encontrada: ${path}`);
 }
 
 async function refreshEmployees() {
@@ -332,90 +196,34 @@ function lockRhPanel() {
   rhPanelContent.classList.add("locked");
   rhPanelContent.classList.remove("unlocked");
   rhLockStatus.textContent = "";
-  recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Valide uma digital admin para visualizar os registros.</p>';
+  recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Digite a senha do Painel RH para visualizar os registros.</p>';
   employeeRegistryList.innerHTML = "";
   employeeRegistryStatus.textContent = "";
 }
 
-function setBiometricBusy(isBusy) {
-  isBiometricReading = isBusy;
-  if (loginBiometricButton) loginBiometricButton.disabled = isBusy;
+async function sha256Hex(text) {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function callIdBioBridge(path) {
-  return apiRequest(path, { method: "POST", timeoutMs: BIOMETRIC_API_TIMEOUT_MS });
-}
+async function openRhPanel(password) {
+  if (hasRhAccess()) return;
 
-async function validateRhFingerprint() {
-  if (hasRhAccess() || isBiometricReading) return;
-
-  setBiometricBusy(true);
-  rhLockStatus.textContent = "Coloque a digital admin no leitor...";
-
-  try {
-    await callIdBioBridge("/verify");
-    if (activeTabId !== "painel-rh") return;
-    unlockRhPanel();
-    await refreshRecords();
-    renderRecords();
-  } catch (error) {
-    rhLockStatus.textContent = `Digital nao validada: ${error.message}`;
-  } finally {
-    setBiometricBusy(false);
-  }
-}
-
-async function registerRhFingerprint() {
-  clearAutoLoginFingerprint();
-
-  const statusTarget = document.body.classList.contains("login-locked")
-    ? loginBiometricStatus
-    : rhLock.hidden
-      ? employeeRegistryStatus
-      : rhLockStatus;
-
-  if (isBiometricReading) {
-    statusTarget.textContent = "Aguarde a leitura atual terminar para cadastrar a digital.";
+  if (await sha256Hex(password) !== RH_PASSWORD_HASH) {
+    rhLockStatus.textContent = "Senha incorreta.";
+    rhPasswordInput.select();
     return;
   }
 
-  setBiometricBusy(true);
-  statusTarget.textContent = "Coloque a digital admin no leitor para cadastrar...";
-
+  rhLockForm.reset();
+  unlockRhPanel();
   try {
-    const result = await callIdBioBridge("/register");
-    statusTarget.textContent = result.message || "Digital admin cadastrada.";
-    if (apiToken && activeTabId === "painel-rh") {
-      lockRhPanel();
-      rhLockStatus.textContent = "Digital admin cadastrada. Coloque a digital para liberar o Painel RH.";
-    } else if (document.body.classList.contains("login-locked")) {
-      statusTarget.textContent = "Digital admin cadastrada. Clique em Entrar com digital para acessar.";
-    }
+    await refreshRecords();
   } catch (error) {
-    statusTarget.textContent = `Nao foi possivel cadastrar a digital: ${error.message}`;
-  } finally {
-    setBiometricBusy(false);
+    rhLockStatus.textContent = error.message;
   }
-}
-
-async function loginWithFingerprint(options = {}) {
-  if (isBiometricReading) return;
-
-  setBiometricBusy(true);
-  loginError.classList.remove("visible");
-  loginBiometricStatus.textContent = options.automatic
-    ? "Aguardando digital admin no leitor..."
-    : "Coloque a digital admin no leitor...";
-
-  try {
-    const payload = await apiRequest("/login/biometric", { method: "POST", timeoutMs: BIOMETRIC_API_TIMEOUT_MS });
-    await setAuthenticated(payload.token);
-    loginBiometricStatus.textContent = "";
-  } catch (error) {
-    loginBiometricStatus.textContent = `Digital nao validada: ${error.message}`;
-  } finally {
-    setBiometricBusy(false);
-  }
+  renderRecords();
 }
 
 function setActiveTab(tabId) {
@@ -441,7 +249,7 @@ function setActiveTab(tabId) {
     lockRhPanel();
   }
   if (tabId === "painel-rh" && !hasRhAccess()) {
-    validateRhFingerprint();
+    rhPasswordInput.focus();
   }
 }
 
@@ -718,7 +526,7 @@ function updateMetrics(records) {
 
 function renderRecords() {
   if (!hasRhAccess()) {
-    recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Valide uma digital admin para visualizar os registros.</p>';
+    recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Digite a senha do Painel RH para visualizar os registros.</p>';
     monthCount.textContent = "0";
     semesterCount.textContent = "0";
     yearCount.textContent = "0";
@@ -796,6 +604,11 @@ tabTriggers.forEach((trigger) => {
     }
     setActiveTab(tabId);
   });
+});
+
+rhLockForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  openRhPanel(rhPasswordInput.value);
 });
 
 rhPanelExitButton.addEventListener("click", () => {
@@ -879,7 +692,7 @@ employeeRegistryForm.elements.employeeId.addEventListener("input", () => {
 employeeRegistryForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!hasRhAccess()) {
-    employeeRegistryStatus.textContent = "Valide uma digital admin antes de cadastrar funcionarios.";
+    employeeRegistryStatus.textContent = "Digite a senha do Painel RH antes de cadastrar funcionarios.";
     return;
   }
 
@@ -955,44 +768,6 @@ employeeRegistryList.addEventListener("click", async (event) => {
   }
 });
 
-loginUsername.addEventListener("input", () => {
-  loginError.classList.remove("visible");
-  syncLoginSubmit();
-});
-
-loginPassword.addEventListener("input", () => {
-  loginError.classList.remove("visible");
-  syncLoginSubmit();
-});
-
-userHintButton.addEventListener("click", (event) => {
-  event.stopPropagation();
-  userHintTooltip.classList.toggle("visible");
-});
-
-userHintButton.addEventListener("focus", () => userHintTooltip.classList.add("visible"));
-userHintButton.addEventListener("blur", () => userHintTooltip.classList.remove("visible"));
-document.addEventListener("click", () => userHintTooltip.classList.remove("visible"));
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") userHintTooltip.classList.remove("visible");
-});
-
-function updateCapsLockWarning(event) {
-  capsLockWarning.hidden = !(event.getModifierState && event.getModifierState("CapsLock"));
-}
-
-loginPassword.addEventListener("keydown", updateCapsLockWarning);
-loginPassword.addEventListener("keyup", updateCapsLockWarning);
-loginPassword.addEventListener("blur", () => {
-  capsLockWarning.hidden = true;
-});
-
-passwordToggle.addEventListener("click", () => {
-  const isShowing = loginPassword.type === "text";
-  loginPassword.type = isShowing ? "password" : "text";
-  passwordToggle.setAttribute("aria-label", isShowing ? "Mostrar senha" : "Ocultar senha");
-});
-
 clearStorage.addEventListener("click", async () => {
   if (!hasRhAccess()) {
     setActiveTab("painel-rh");
@@ -1010,43 +785,6 @@ clearStorage.addEventListener("click", async () => {
   renderRecords();
 });
 
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  loginSubmit.disabled = true;
-  loginSubmit.textContent = "Autenticando...";
-  const data = new FormData(loginForm);
-  const username = String(data.get("username") || "").trim().toLowerCase();
-  const password = String(data.get("password") || "");
-
-  try {
-    const payload = await apiRequest("/login", {
-      method: "POST",
-      body: { username, password }
-    });
-    loginSubmit.textContent = "Entrar";
-    await setAuthenticated(payload.token);
-    syncLoginSubmit();
-    return;
-  } catch (error) {
-    loginError.textContent = error.message;
-    loginError.classList.add("visible");
-  }
-
-  loginSubmit.textContent = "Entrar";
-  syncLoginSubmit();
-});
-
-loginBiometricButton.addEventListener("click", () => {
-  clearAutoLoginFingerprint();
-  loginWithFingerprint();
-});
-
-rhRegisterFingerprintButtons.forEach((button) => {
-  button.addEventListener("click", registerRhFingerprint);
-});
-
-logoutButton.addEventListener("click", logout);
-
 async function initApp() {
   applyTheme(localStorage.getItem(THEME_KEY) || "light");
   tabPanels.forEach((panel) => {
@@ -1055,24 +793,14 @@ async function initApp() {
   populateDepartmentOptions();
   fillRegisteredScheduleAutomatically();
   document.querySelector('[name="requestDate"]').value = todayDate();
-  initMatrixBackground();
-  syncLoginSubmit();
   setRequestSectionEnabled(false);
   lockRhPanel();
   renderRecords();
 
-  if (!apiToken) {
-    return;
-  }
-
   try {
-    const session = await apiRequest("/session");
     await refreshEmployees();
-    unlockApp();
   } catch (error) {
-    apiToken = "";
-    sessionStorage.removeItem(API_TOKEN_KEY);
-    lockApp();
+    // Sem servidor local, segue com os funcionarios padrao.
   }
 }
 
