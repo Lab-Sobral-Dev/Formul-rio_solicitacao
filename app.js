@@ -1,8 +1,8 @@
 const RH_ACCESS_KEY = "rhPanelAccess";
 const THEME_KEY = "rhSobralTheme";
 const SUPABASE_URL = "https://dlrqwyidlgpnfqmdvrjo.supabase.co";
-// Chave "anon" (publica) do projeto: Supabase > Project Settings > API. Vazia = usa localStorage.
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRscnF3eWlkbGdwbmZxbWR2cmpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NzY3MjEsImV4cCI6MjEwNzA1MjcyMX0.BQynUZg_-dURNCH29BSRqbUr4GiOXmknNylS8CFmgvM";
+// Chave "anon" vem de config.local.js (fora do Git). Sem ela, usa localStorage.
+const SUPABASE_ANON_KEY = window.APP_CONFIG?.supabaseAnonKey || "";
 const EMPLOYEES_KEY = "rhSobralEmployees";
 const RECORDS_KEY = "rhSobralRecords";
 // Senha de teste: rh123 (somente o hash SHA-256 fica no codigo). Trocar antes de publicar.
