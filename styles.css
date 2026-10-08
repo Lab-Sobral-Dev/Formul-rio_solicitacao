@@ -478,6 +478,10 @@ h1 {
   text-align: center;
 }
 
+.rh-lock[hidden] {
+  display: none;
+}
+
 .rh-tab-locked {
   display: grid;
   min-height: 520px;
