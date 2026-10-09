@@ -5,8 +5,6 @@ const SUPABASE_URL = "https://dlrqwyidlgpnfqmdvrjo.supabase.co";
 const SUPABASE_ANON_KEY = window.APP_CONFIG?.supabaseAnonKey || "";
 const EMPLOYEES_KEY = "rhSobralEmployees";
 const RECORDS_KEY = "rhSobralRecords";
-// Senha de teste: rh123 (somente o hash SHA-256 fica no codigo). Trocar antes de publicar.
-const RH_PASSWORD_HASH = "b655f90cf354b94f9be03c3b3e7a734e827b2fa3fd41aba3c13d0d2c2e9b8cf2";
 const RH_EMAIL = "rh@empresa.com.br";
 
 const tabTriggers = document.querySelectorAll("[data-tab-target]");
@@ -43,6 +41,7 @@ const rhPanelExitButton = document.querySelector("#rhPanelExitButton");
 const rhTab = document.querySelector("#painel-rh");
 const rhNavItem = document.querySelector('[data-tab-target="painel-rh"]');
 const rhLockForm = document.querySelector("#rhLockForm");
+const rhEmailInput = document.querySelector("#rhEmailInput");
 const rhPasswordInput = document.querySelector("#rhPasswordInput");
 const rhLockStatus = document.querySelector("#rhLockStatus");
 const employeeRegistryForm = document.querySelector("#employeeRegistryForm");
@@ -117,6 +116,8 @@ const DEFAULT_REGISTERED_SCHEDULE = "08:00 as 12:00 e 13:00 as 17:48";
 const DEFAULT_EMPLOYEES_BY_ID = {};
 
 let controlIdTime = "";
+let lookupTimer = 0;
+let lookupSeq = 0;
 let isSaving = false;
 let activeTabId = document.querySelector(".tab-panel.active")?.id || "nova-solicitacao";
 let employeesCache = { ...DEFAULT_EMPLOYEES_BY_ID };
@@ -135,8 +136,69 @@ function toggleTheme() {
   applyTheme(nextTheme);
 }
 
+// Sessao do RH (Supabase Auth) guardada so na aba atual. A protecao real dos dados
+// esta nas politicas RLS do banco; aqui o acesso apenas libera a interface.
+function readRhSession() {
+  try {
+    return JSON.parse(sessionStorage.getItem(RH_ACCESS_KEY));
+  } catch (error) {
+    return null;
+  }
+}
+
 function hasRhAccess() {
-  return sessionStorage.getItem(RH_ACCESS_KEY) === "authorized";
+  return Boolean(readRhSession());
+}
+
+function storeRhSession(payload) {
+  sessionStorage.setItem(RH_ACCESS_KEY, JSON.stringify({
+    accessToken: payload.access_token,
+    refreshToken: payload.refresh_token,
+    expiresAt: Date.now() + Math.max(payload.expires_in - 30, 0) * 1000
+  }));
+}
+
+function tokenRole(token) {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(payload)).app_metadata?.role || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+async function authRequest(path, body) {
+  let response;
+  try {
+    response = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  } catch (error) {
+    throw new Error("Nao foi possivel conectar ao servidor de login. Verifique a internet.");
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error_description || payload.msg || "Falha no login.");
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function getAccessToken() {
+  const session = readRhSession();
+  if (!session?.accessToken) return null;
+  if (Date.now() < session.expiresAt) return session.accessToken;
+
+  try {
+    storeRhSession(await authRequest("token?grant_type=refresh_token", { refresh_token: session.refreshToken }));
+    return readRhSession().accessToken;
+  } catch (error) {
+    return null;
+  }
 }
 
 const EMPLOYEE_COLUMNS = {
@@ -184,14 +246,21 @@ function unmapKeys(row, columns) {
   return result;
 }
 
-async function supabaseRequest(table, { method = "GET", query = "", body, upsertOn } = {}) {
-  const headers = {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-  };
+async function supabaseRequest(table, { method = "GET", query = "", body, upsertOn, json = false } = {}) {
+  let bearer = SUPABASE_ANON_KEY;
+  if (hasRhAccess()) {
+    bearer = await getAccessToken();
+    if (!bearer) {
+      lockRhPanel();
+      rhLockStatus.textContent = "Sessao expirada. Entre novamente.";
+      throw new Error("Sessao expirada. Entre novamente.");
+    }
+  }
+
+  const headers = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${bearer}` };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (upsertOn) headers.Prefer = "resolution=merge-duplicates,return=minimal";
-  else if (method !== "GET") headers.Prefer = "return=minimal";
+  else if (method !== "GET" && !json) headers.Prefer = "return=minimal";
 
   const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
   let response;
@@ -208,10 +277,12 @@ async function supabaseRequest(table, { method = "GET", query = "", body, upsert
     } catch (error) {
       detail = "";
     }
-    throw new Error(`Falha no banco de dados (${response.status}). ${detail}`.trim());
+    const error = new Error(`Falha no banco de dados (${response.status}). ${detail}`.trim());
+    error.status = response.status;
+    throw error;
   }
 
-  return method === "GET" ? response.json() : null;
+  return method === "GET" || json ? response.json() : null;
 }
 
 async function supabaseApi(path, options) {
@@ -224,6 +295,15 @@ async function supabaseApi(path, options) {
     }
 
     throw new Error("Use /employees/upsert ou /employees/delete.");
+  }
+
+  if (path === "/employees/lookup") {
+    const rows = await supabaseRequest("rpc/lookup_employee", {
+      method: "POST",
+      body: { p_employee_id: options.body.id },
+      json: true
+    });
+    return rows[0] ? unmapKeys(rows[0], EMPLOYEE_COLUMNS) : null;
   }
 
   if (path === "/employees/upsert") {
@@ -241,14 +321,6 @@ async function supabaseApi(path, options) {
   if (path === "/records") {
     const rows = await supabaseRequest("records", { query: "?order=created_at.asc" });
     return rows.map((row) => unmapKeys(row, RECORD_COLUMNS));
-  }
-
-  if (path === "/records/exists") {
-    const { employeeId, requestDate, requestType } = options.body;
-    const query = `?select=id&limit=1&employee_id=eq.${encodeURIComponent(employeeId)}`
-      + `&request_date=eq.${encodeURIComponent(requestDate)}`
-      + `&request_type=eq.${encodeURIComponent(requestType)}&status=neq.Recusada`;
-    return (await supabaseRequest("records", { query })).length > 0;
   }
 
   if (path === "/records/add") {
@@ -289,6 +361,8 @@ async function apiRequest(path, options = {}) {
 
   if (path === "/employees") return readStored(EMPLOYEES_KEY, {});
 
+  if (path === "/employees/lookup") return readStored(EMPLOYEES_KEY, {})[options.body.id] || null;
+
   if (path === "/employees/upsert" || path === "/employees/delete") {
     const employees = readStored(EMPLOYEES_KEY, {});
     if (path === "/employees/upsert") employees[options.body.id] = options.body.employee;
@@ -299,14 +373,15 @@ async function apiRequest(path, options = {}) {
 
   if (path === "/records") return readStored(RECORDS_KEY, []);
 
-  if (path === "/records/exists") {
-    const { employeeId, requestDate, requestType } = options.body;
-    return readStored(RECORDS_KEY, []).some((item) => item.employeeId === employeeId
-      && item.requestDate === requestDate && item.requestType === requestType && item.status !== "Recusada");
-  }
-
   if (path === "/records/add") {
     const records = readStored(RECORDS_KEY, []);
+    const { employeeId, requestDate, requestType } = options.body;
+    if (records.some((item) => item.employeeId === employeeId && item.requestDate === requestDate
+      && item.requestType === requestType && item.status !== "Recusada")) {
+      const error = new Error("Solicitacao duplicada.");
+      error.status = 409;
+      throw error;
+    }
     records.push(options.body);
     localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
     return { ok: true };
@@ -340,7 +415,6 @@ async function refreshRecords() {
 }
 
 function unlockRhPanel() {
-  sessionStorage.setItem(RH_ACCESS_KEY, "authorized");
   rhLock.hidden = true;
   rhTab.classList.remove("rh-tab-locked");
   rhNavItem.classList.remove("rh-nav-locked");
@@ -353,7 +427,16 @@ function unlockRhPanel() {
 }
 
 function lockRhPanel() {
+  const session = readRhSession();
+  if (session?.accessToken) {
+    fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.accessToken}` }
+    }).catch(() => {});
+  }
   sessionStorage.removeItem(RH_ACCESS_KEY);
+  employeesCache = { ...DEFAULT_EMPLOYEES_BY_ID };
+  recordsCache = [];
   rhLock.hidden = false;
   rhTab.classList.add("rh-tab-locked");
   rhNavItem.classList.add("rh-nav-locked");
@@ -361,33 +444,46 @@ function lockRhPanel() {
   rhPanelContent.classList.add("locked");
   rhPanelContent.classList.remove("unlocked");
   rhLockStatus.textContent = "";
-  recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Digite a senha do Painel RH para visualizar os registros.</p>';
+  recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Entre com o e-mail e a senha do RH para visualizar os registros.</p>';
   employeeRegistryList.innerHTML = "";
   employeeRegistryStatus.textContent = "";
 }
 
-async function sha256Hex(text) {
-  const bytes = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-async function openRhPanel(password) {
+async function openRhPanel(email, password) {
   if (hasRhAccess()) return;
+  rhLockStatus.textContent = "Entrando...";
 
-  if (await sha256Hex(password) !== RH_PASSWORD_HASH) {
-    rhLockStatus.textContent = "Senha incorreta.";
-    rhPasswordInput.select();
-    return;
+  if (SUPABASE_ANON_KEY) {
+    let payload;
+    try {
+      payload = await authRequest("token?grant_type=password", { email, password });
+    } catch (error) {
+      rhLockStatus.textContent = error.status === 400 ? "E-mail ou senha incorretos." : error.message;
+      rhPasswordInput.select();
+      return;
+    }
+    if (tokenRole(payload.access_token) !== "rh") {
+      rhLockStatus.textContent = "Este usuario nao tem permissao de RH.";
+      fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${payload.access_token}` }
+      }).catch(() => {});
+      return;
+    }
+    storeRhSession(payload);
+  } else {
+    // Sem Supabase (modo de teste local) nao ha dados reais para proteger.
+    sessionStorage.setItem(RH_ACCESS_KEY, JSON.stringify({ local: true }));
   }
 
   rhLockForm.reset();
   unlockRhPanel();
   try {
-    await refreshRecords();
+    await Promise.all([refreshEmployees(), refreshRecords()]);
   } catch (error) {
-    rhLockStatus.textContent = error.message;
+    employeeRegistryStatus.textContent = error.message;
   }
+  renderEmployeeRegistry();
   renderRecords();
 }
 
@@ -530,14 +626,33 @@ function setRequestSectionEnabled(enabled) {
   if (stepRequest) stepRequest.classList.toggle("active", enabled);
 }
 
-function fillEmployeeById(employeeId) {
-  const employee = loadEmployees()[employeeId];
+async function fillEmployeeById(employeeId) {
+  const seq = ++lookupSeq;
+  clearEmployeeFields();
+  setRequestSectionEnabled(false);
+
+  if (!employeeId) {
+    lookupStatus.textContent = "Digite a matricula para buscar o cadastro.";
+    lookupStatus.className = "";
+    return;
+  }
+
+  lookupStatus.textContent = "Buscando cadastro...";
+  lookupStatus.className = "";
+  let employee = null;
+  try {
+    employee = await apiRequest("/employees/lookup", { method: "POST", body: { id: employeeId } });
+  } catch (error) {
+    if (seq !== lookupSeq) return;
+    lookupStatus.textContent = error.message;
+    lookupStatus.className = "not-found";
+    return;
+  }
+  if (seq !== lookupSeq) return;
 
   if (!employee) {
-    clearEmployeeFields();
-    setRequestSectionEnabled(false);
-    lookupStatus.textContent = employeeId.length ? "Matricula nao encontrada no cadastro." : "Digite a matricula para buscar o cadastro.";
-    lookupStatus.className = employeeId.length ? "not-found" : "";
+    lookupStatus.textContent = "Matricula nao encontrada no cadastro.";
+    lookupStatus.className = "not-found";
     return;
   }
 
@@ -810,7 +925,7 @@ function updateMetrics(records) {
 
 function renderRecords() {
   if (!hasRhAccess()) {
-    recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Digite a senha do Painel RH para visualizar os registros.</p>';
+    recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Entre com o e-mail e a senha do RH para visualizar os registros.</p>';
     pendingCount.textContent = "0";
     monthCount.textContent = "0";
     semesterCount.textContent = "0";
@@ -858,6 +973,9 @@ function renderRecords() {
 }
 
 function validateRequest(record) {
+  if (!record.employeeName || !record.employeeId) return "Informe uma matricula cadastrada antes de salvar.";
+  if (!record.requestType) return "Selecione a RQ.";
+
   const rule = REQUEST_TYPE_RULES[record.requestType] || DEFAULT_REQUEST_RULE;
 
   if (rule.futureDate && record.requestDate < tomorrowDate()) {
@@ -876,7 +994,12 @@ function getFormValue(data, name) {
 
 employeeIdInput.addEventListener("input", () => {
   employeeIdInput.value = onlyDigits(employeeIdInput.value);
-  fillEmployeeById(employeeIdInput.value);
+  // Limpa na hora para nunca enviar dados de outra matricula; busca apos uma pausa na digitacao.
+  lookupSeq += 1;
+  clearEmployeeFields();
+  setRequestSectionEnabled(false);
+  window.clearTimeout(lookupTimer);
+  lookupTimer = window.setTimeout(() => fillEmployeeById(employeeIdInput.value), 250);
 });
 
 requestTypeInputs.forEach((input) => {
@@ -921,7 +1044,7 @@ tabTriggers.forEach((trigger) => {
 
 rhLockForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  openRhPanel(rhPasswordInput.value);
+  openRhPanel(rhEmailInput.value.trim(), rhPasswordInput.value);
 });
 
 rhPanelExitButton.addEventListener("click", () => {
@@ -969,20 +1092,14 @@ form.addEventListener("submit", async (event) => {
   }
 
   try {
-    let duplicated = false;
-    try {
-      duplicated = await apiRequest("/records/exists", { method: "POST", body: record });
-    } catch (error) {
-      duplicated = false; // Sem checagem de duplicidade, segue com o salvamento.
-    }
-    if (duplicated) {
-      showFormError("Ja existe uma solicitacao deste tipo para esta matricula e data (pendente ou aprovada).");
-      return;
-    }
     await apiRequest("/records/add", { method: "POST", body: record });
     recordsCache.push({ ...record, status: STATUS_PENDING });
   } catch (error) {
-    saveStatus.textContent = error.message;
+    if (error.status === 409) {
+      showFormError("Ja existe uma solicitacao deste tipo para esta matricula e data (pendente ou aprovada).");
+    } else {
+      saveStatus.textContent = error.message;
+    }
     return;
   }
 
@@ -1158,12 +1275,6 @@ async function initApp() {
   setRequestSectionEnabled(false);
   lockRhPanel();
   renderRecords();
-
-  try {
-    await refreshEmployees();
-  } catch (error) {
-    // Sem servidor local, segue com os funcionarios padrao.
-  }
 }
 
 initApp();
