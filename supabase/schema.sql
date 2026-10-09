@@ -18,7 +18,7 @@ create table if not exists public.records (
   manager_name        text not null default '',
   registered_schedule text not null default '',
   request_type        text not null default '',
-  request_date        text not null default '',
+  request_date        date not null default current_date,
   current_time_value  text not null default '',
   requested_time      text not null default '',
   return_time         text not null default '',
@@ -43,3 +43,9 @@ create policy records_all on public.records for all to anon using (true) with ch
 -- Fluxo de aprovacao (etapa 1). Execute no SQL Editor; pode rodar mais de uma vez.
 alter table public.records add column if not exists status     text not null default 'Pendente';
 alter table public.records add column if not exists decided_at timestamptz;
+
+-- Etapa 4: request_date passa de text para date (bancos criados antes desta versao).
+-- Pode rodar mais de uma vez. Datas vazias viram a data de hoje.
+alter table public.records alter column request_date drop default;
+alter table public.records alter column request_date type date using coalesce(nullif(request_date::text, '')::date, current_date);
+alter table public.records alter column request_date set default current_date;

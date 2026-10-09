@@ -223,18 +223,18 @@ async function supabaseApi(path, options) {
       return Object.fromEntries(rows.map((row) => [row.employee_id, unmapKeys(row, EMPLOYEE_COLUMNS)]));
     }
 
-    const employees = options.body;
-    const ids = Object.keys(employees);
-    const existing = await supabaseRequest("employees", { query: "?select=employee_id" });
-    const removed = existing.map((row) => row.employee_id).filter((id) => !ids.includes(id));
-    if (removed.length) {
-      const list = removed.map((id) => `"${id}"`).join(",");
-      await supabaseRequest("employees", { method: "DELETE", query: `?employee_id=in.(${encodeURIComponent(list)})` });
-    }
-    if (ids.length) {
-      const rows = ids.map((id) => ({ employee_id: id, ...mapKeys(employees[id], EMPLOYEE_COLUMNS) }));
-      await supabaseRequest("employees", { method: "POST", query: "?on_conflict=employee_id", body: rows, upsertOn: true });
-    }
+    throw new Error("Use /employees/upsert ou /employees/delete.");
+  }
+
+  if (path === "/employees/upsert") {
+    const { id, employee } = options.body;
+    const row = { employee_id: id, ...mapKeys(employee, EMPLOYEE_COLUMNS) };
+    await supabaseRequest("employees", { method: "POST", query: "?on_conflict=employee_id", body: row, upsertOn: true });
+    return { ok: true };
+  }
+
+  if (path === "/employees/delete") {
+    await supabaseRequest("employees", { method: "DELETE", query: `?employee_id=eq.${encodeURIComponent(options.body.id)}` });
     return { ok: true };
   }
 
@@ -287,12 +287,14 @@ async function apiRequest(path, options = {}) {
   };
   const method = options.method || "GET";
 
-  if (path === "/employees") {
-    if (method === "POST") {
-      localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(options.body));
-      return { ok: true };
-    }
-    return readStored(EMPLOYEES_KEY, {});
+  if (path === "/employees") return readStored(EMPLOYEES_KEY, {});
+
+  if (path === "/employees/upsert" || path === "/employees/delete") {
+    const employees = readStored(EMPLOYEES_KEY, {});
+    if (path === "/employees/upsert") employees[options.body.id] = options.body.employee;
+    else delete employees[options.body.id];
+    localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(employees));
+    return { ok: true };
   }
 
   if (path === "/records") return readStored(RECORDS_KEY, []);
@@ -511,9 +513,14 @@ function loadEmployees() {
   return employeesCache;
 }
 
-async function saveEmployees(employees) {
-  employeesCache = employees;
-  await apiRequest("/employees", { method: "POST", body: employees });
+async function saveEmployee(employeeId, employee) {
+  await apiRequest("/employees/upsert", { method: "POST", body: { id: employeeId, employee } });
+  employeesCache[employeeId] = employee;
+}
+
+async function deleteEmployee(employeeId) {
+  await apiRequest("/employees/delete", { method: "POST", body: { id: employeeId } });
+  delete employeesCache[employeeId];
 }
 
 function setRequestSectionEnabled(enabled) {
@@ -1060,8 +1067,7 @@ employeeRegistryForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  const employees = loadEmployees();
-  employees[employeeId] = {
+  const employee = {
     employeeName: getFormValue(data, "employeeName"),
     department: getFormValue(data, "department"),
     role: getFormValue(data, "role"),
@@ -1069,7 +1075,7 @@ employeeRegistryForm.addEventListener("submit", async (event) => {
     registeredSchedule: getFormValue(data, "registeredSchedule")
   };
   try {
-    await saveEmployees(employees);
+    await saveEmployee(employeeId, employee);
     employeeRegistryStatus.textContent = "Funcionario salvo no cadastro.";
   } catch (error) {
     employeeRegistryStatus.textContent = error.message;
@@ -1104,13 +1110,11 @@ employeeRegistryList.addEventListener("click", async (event) => {
   }
 
   if (button.dataset.action === "delete-employee") {
-    const employees = loadEmployees();
-    const employee = employees[employeeId];
+    const employee = loadEmployees()[employeeId];
     if (!employee) return;
     if (!confirm(`Excluir o cadastro de ${employee.employeeName}?`)) return;
-    delete employees[employeeId];
     try {
-      await saveEmployees(employees);
+      await deleteEmployee(employeeId);
     } catch (error) {
       employeeRegistryStatus.textContent = error.message;
       return;
