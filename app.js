@@ -19,6 +19,10 @@ const controlIdText = document.querySelector("#controlIdText");
 const clockStatus = document.querySelector("#clockStatus");
 const requestId = document.querySelector("#requestId");
 const departmentFilter = document.querySelector("#departmentFilter");
+const typeFilter = document.querySelector("#typeFilter");
+const dateFromFilter = document.querySelector("#dateFromFilter");
+const dateToFilter = document.querySelector("#dateToFilter");
+const exportCsvButton = document.querySelector("#exportCsv");
 const formError = document.querySelector("#formError");
 const requestTypeInputs = document.querySelectorAll('[name="requestType"]');
 const requestDateInput = document.querySelector('[name="requestDate"]');
@@ -110,15 +114,7 @@ const DEFAULT_REQUEST_RULE = { timeLabel: "Horario de saida", hasTime: true, has
 
 const DEFAULT_REGISTERED_SCHEDULE = "08:00 as 12:00 e 13:00 as 17:48";
 
-const DEFAULT_EMPLOYEES_BY_ID = {
-  "1024": {
-    employeeName: "Maria Santos",
-    department: "Producao",
-    role: "Operadora de Producao",
-    managerName: "Carlos Almeida",
-    registeredSchedule: "07:00 as 11:00 e 12:00 as 16:48"
-  }
-};
+const DEFAULT_EMPLOYEES_BY_ID = {};
 
 let controlIdTime = "";
 let isSaving = false;
@@ -689,6 +685,74 @@ function populateDepartmentFilter(records) {
   departmentFilter.value = departments.includes(current) ? current : "";
 }
 
+function populateTypeFilter() {
+  Object.keys(REQUEST_TYPE_RULES).forEach((type) => {
+    const option = document.createElement("option");
+    option.value = type;
+    option.textContent = type;
+    typeFilter.append(option);
+  });
+}
+
+function csvCell(value) {
+  let text = String(value ?? "");
+  // Evita que o Excel interprete o texto como formula.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportRecordsCsv() {
+  const records = filteredRecords(loadRecords()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  if (!records.length) {
+    rhLockStatus.textContent = "";
+    window.alert("Nao ha solicitacoes para exportar com os filtros atuais.");
+    return;
+  }
+
+  const columns = [
+    ["Protocolo", (r) => r.id],
+    ["Data", (r) => formatDate(r.requestDate)],
+    ["Matricula", (r) => r.employeeId],
+    ["Funcionario", (r) => r.employeeName],
+    ["Setor", (r) => r.department],
+    ["Cargo", (r) => r.role],
+    ["Superior imediato", (r) => r.managerName],
+    ["Tipo de RQ", (r) => r.requestType],
+    ["Horario do ponto", (r) => r.currentTime],
+    ["Horario solicitado", (r) => r.requestedTime],
+    ["Retorno", (r) => r.returnStatus],
+    ["Horario de retorno", (r) => r.returnTime],
+    ["Control ID", (r) => r.controlIdTime],
+    ["Status", (r) => recordStatus(r)],
+    ["Decidido em", (r) => (r.decidedAt ? new Date(r.decidedAt).toLocaleString("pt-BR") : "")],
+    ["Motivo", (r) => r.reason],
+    ["Criado em", (r) => (r.createdAt ? new Date(r.createdAt).toLocaleString("pt-BR") : "")]
+  ];
+  const lines = [columns.map(([title]) => csvCell(title)).join(";")];
+  records.forEach((record) => lines.push(columns.map(([, get]) => csvCell(get(record))).join(";")));
+
+  // BOM + ponto e virgula para abrir corretamente no Excel em portugues.
+  const blob = new Blob(["\ufeff", lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `solicitacoes-${todayDate()}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+}
+
+function printRecord(card) {
+  card.classList.add("printing");
+  document.body.classList.add("print-one");
+  window.print();
+}
+
+window.addEventListener("afterprint", () => {
+  document.body.classList.remove("print-one");
+  document.querySelectorAll(".record.printing").forEach((card) => card.classList.remove("printing"));
+});
+
 function recordStatus(record) {
   return record.status || STATUS_PENDING;
 }
@@ -696,13 +760,19 @@ function recordStatus(record) {
 function filteredRecords(records) {
   const department = departmentFilter.value;
   const status = statusFilter.value;
+  const type = typeFilter.value;
+  const dateFrom = dateFromFilter.value;
+  const dateTo = dateToFilter.value;
   const employee = employeeFilter.value.trim().toLowerCase();
 
   return records.filter((record) => {
     const departmentMatches = !department || record.department === department;
     const statusMatches = !status || recordStatus(record) === status;
     const employeeMatches = !employee || record.employeeName.toLowerCase().includes(employee);
-    return departmentMatches && statusMatches && employeeMatches;
+    const typeMatches = !type || record.requestType === type;
+    const fromMatches = !dateFrom || record.requestDate >= dateFrom;
+    const toMatches = !dateTo || record.requestDate <= dateTo;
+    return departmentMatches && statusMatches && typeMatches && fromMatches && toMatches && employeeMatches;
   });
 }
 
@@ -937,11 +1007,20 @@ form.addEventListener("reset", () => {
 
 departmentFilter.addEventListener("change", renderRecords);
 statusFilter.addEventListener("change", renderRecords);
+typeFilter.addEventListener("change", renderRecords);
+dateFromFilter.addEventListener("change", renderRecords);
+dateToFilter.addEventListener("change", renderRecords);
+exportCsvButton.addEventListener("click", exportRecordsCsv);
 
 recordsList.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   const card = button?.closest(".record");
   if (!button || !card || !hasRhAccess()) return;
+
+  if (button.dataset.action === "print-record") {
+    printRecord(card);
+    return;
+  }
 
   const status = { "approve-record": STATUS_APPROVED, "reject-record": STATUS_REJECTED }[button.dataset.action];
   if (!status) return;
@@ -1071,6 +1150,7 @@ async function initApp() {
   populateDepartmentOptions();
   fillRegisteredScheduleAutomatically();
   applyRequestType();
+  populateTypeFilter();
   setRequestSectionEnabled(false);
   lockRhPanel();
   renderRecords();

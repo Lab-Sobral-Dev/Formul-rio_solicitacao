@@ -326,10 +326,25 @@
                         </select>
                       </label>
                       <label>
+                        Tipo de RQ
+                        <select id="typeFilter">
+                          <option value="">Todos</option>
+                        </select>
+                      </label>
+                      <label>
+                        De
+                        <input id="dateFromFilter" type="date">
+                      </label>
+                      <label>
+                        Ate
+                        <input id="dateToFilter" type="date">
+                      </label>
+                      <label class="filter-wide">
                         Funcionario
                         <input id="employeeFilter" placeholder="Filtrar por nome">
                       </label>
                     </div>
+                    <button class="btn-secondary" type="button" id="exportCsv">Exportar CSV</button>
                   </div>
 
                   <div class="mini-metrics">
@@ -393,6 +408,7 @@
           <b class="status-badge" data-field="status"></b>
           <button class="btn-secondary approve-action" type="button" data-action="approve-record">Aprovar</button>
           <button class="btn-secondary danger-action" type="button" data-action="reject-record">Recusar</button>
+          <button class="btn-secondary" type="button" data-action="print-record">Imprimir</button>
         </div>
         <a data-field="emailLink" class="email-link" href="#">Preparar e-mail ao RH</a>
       </article>

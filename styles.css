@@ -1141,6 +1141,44 @@ dd {
   min-height: 38px;
 }
 
+.filter-wide {
+  grid-column: 1 / -1;
+}
+
+@media print {
+  body.print-one * {
+    visibility: hidden;
+  }
+
+  body.print-one .record.printing,
+  body.print-one .record.printing * {
+    visibility: visible;
+  }
+
+  body.print-one .record.printing {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    border: 0;
+    color: #000;
+    background: #fff;
+  }
+
+  body.print-one .record.printing::before {
+    content: "RH Sobral - Solicitacao de horario";
+    display: block;
+    margin-bottom: 14px;
+    font-size: 18px;
+    font-weight: 800;
+  }
+
+  body.print-one .record.printing .record-decision .btn-secondary,
+  body.print-one .record.printing .email-link {
+    display: none;
+  }
+}
+
 .record-decision {
   display: flex;
   align-items: center;
