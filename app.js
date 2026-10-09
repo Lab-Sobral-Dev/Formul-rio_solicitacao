@@ -6,6 +6,8 @@ const SUPABASE_ANON_KEY = window.APP_CONFIG?.supabaseAnonKey || "";
 const EMPLOYEES_KEY = "rhSobralEmployees";
 const RECORDS_KEY = "rhSobralRecords";
 const RH_EMAIL = "rh@empresa.com.br";
+// Usuario do Supabase Auth usado pelo login por senha (config.local.js: rhLoginEmail).
+const RH_LOGIN_EMAIL = window.APP_CONFIG?.rhLoginEmail || RH_EMAIL;
 
 const tabTriggers = document.querySelectorAll("[data-tab-target]");
 const tabPanels = document.querySelectorAll(".tab-panel");
@@ -41,7 +43,6 @@ const rhPanelExitButton = document.querySelector("#rhPanelExitButton");
 const rhTab = document.querySelector("#painel-rh");
 const rhNavItem = document.querySelector('[data-tab-target="painel-rh"]');
 const rhLockForm = document.querySelector("#rhLockForm");
-const rhEmailInput = document.querySelector("#rhEmailInput");
 const rhPasswordInput = document.querySelector("#rhPasswordInput");
 const rhLockStatus = document.querySelector("#rhLockStatus");
 const employeeRegistryForm = document.querySelector("#employeeRegistryForm");
@@ -444,21 +445,21 @@ function lockRhPanel() {
   rhPanelContent.classList.add("locked");
   rhPanelContent.classList.remove("unlocked");
   rhLockStatus.textContent = "";
-  recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Entre com o e-mail e a senha do RH para visualizar os registros.</p>';
+  recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Digite a senha do Painel RH para visualizar os registros.</p>';
   employeeRegistryList.innerHTML = "";
   employeeRegistryStatus.textContent = "";
 }
 
-async function openRhPanel(email, password) {
+async function openRhPanel(password) {
   if (hasRhAccess()) return;
   rhLockStatus.textContent = "Entrando...";
 
   if (SUPABASE_ANON_KEY) {
     let payload;
     try {
-      payload = await authRequest("token?grant_type=password", { email, password });
+      payload = await authRequest("token?grant_type=password", { email: RH_LOGIN_EMAIL, password });
     } catch (error) {
-      rhLockStatus.textContent = error.status === 400 ? "E-mail ou senha incorretos." : error.message;
+      rhLockStatus.textContent = error.status === 400 ? "Senha incorreta." : error.message;
       rhPasswordInput.select();
       return;
     }
@@ -925,7 +926,7 @@ function updateMetrics(records) {
 
 function renderRecords() {
   if (!hasRhAccess()) {
-    recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Entre com o e-mail e a senha do RH para visualizar os registros.</p>';
+    recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Digite a senha do Painel RH para visualizar os registros.</p>';
     pendingCount.textContent = "0";
     monthCount.textContent = "0";
     semesterCount.textContent = "0";
@@ -1044,7 +1045,7 @@ tabTriggers.forEach((trigger) => {
 
 rhLockForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  openRhPanel(rhEmailInput.value.trim(), rhPasswordInput.value);
+  openRhPanel(rhPasswordInput.value);
 });
 
 rhPanelExitButton.addEventListener("click", () => {
