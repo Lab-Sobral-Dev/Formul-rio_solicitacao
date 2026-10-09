@@ -90,20 +90,6 @@ const DEFAULT_EMPLOYEES_BY_ID = {
     role: "Operadora de Producao",
     managerName: "Carlos Almeida",
     registeredSchedule: "07:00 as 11:00 e 12:00 as 16:48"
-  },
-  "1088": {
-    employeeName: "Joao Pereira",
-    department: "Logistica",
-    role: "Auxiliar de Logistica",
-    managerName: "Patricia Souza",
-    registeredSchedule: "08:00 as 12:00 e 13:00 as 17:48"
-  },
-  "1170": {
-    employeeName: "Ana Oliveira",
-    department: "Administrativo",
-    role: "Assistente Administrativo",
-    managerName: "Renata Lima",
-    registeredSchedule: "08:00 as 12:00 e 13:12 as 18:00"
   }
 };
 
