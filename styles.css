@@ -840,6 +840,21 @@ input[readonly] {
   line-height: 1.35;
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.form-error {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--no);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .return-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

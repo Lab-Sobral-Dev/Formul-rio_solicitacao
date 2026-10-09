@@ -178,16 +178,16 @@
                 <legend>Horario</legend>
                 <div class="fgrid four">
                   <label>
-                    Data do ponto
+                    <span id="requestDateLabel">Data do ponto</span>
                     <input name="requestDate" type="date" required readonly>
                   </label>
-                  <label>
+                  <label id="currentTimeCard">
                     Horario do ponto
                     <input name="currentTime" type="time" readonly placeholder="Automatico">
                   </label>
-                  <label>
-                    Horario de saida
-                    <input name="requestedTime" type="time" required placeholder="Digite o horario de saida">
+                  <label id="requestedTimeCard">
+                    <span id="requestedTimeLabel">Horario de saida</span>
+                    <input name="requestedTime" type="time" required placeholder="Digite o horario">
                   </label>
                   <label id="returnTimeCard">
                     Retorno no ponto
@@ -195,7 +195,7 @@
                   </label>
                 </div>
 
-                <div class="return-options" aria-label="Retorno do funcionario">
+                <div class="return-options" id="returnOptions" aria-label="Retorno do funcionario">
                   <label class="return-card">
                     <input type="radio" name="returnStatus" value="Vai retornar" checked>
                     <span>Vai retornar</span>
@@ -206,7 +206,7 @@
                   </label>
                 </div>
 
-                <div class="control-box">
+                <div class="control-box" id="controlBox">
                   <div>
                     <strong>Horario vinculado ao sistema de ponto</strong>
                     <p id="controlIdText">O horario sera exibido automaticamente pelo Control ID.</p>
@@ -222,6 +222,8 @@
                   <textarea name="reason" required rows="4" placeholder="Informe o motivo de forma objetiva"></textarea>
                 </label>
               </fieldset>
+
+              <p class="form-error" id="formError" role="alert" hidden></p>
 
               <div class="actions">
                 <button class="btn-primary" type="submit">Salvar solicitacao</button>

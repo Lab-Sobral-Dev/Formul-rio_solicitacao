@@ -19,6 +19,16 @@ const controlIdText = document.querySelector("#controlIdText");
 const clockStatus = document.querySelector("#clockStatus");
 const requestId = document.querySelector("#requestId");
 const departmentFilter = document.querySelector("#departmentFilter");
+const formError = document.querySelector("#formError");
+const requestTypeInputs = document.querySelectorAll('[name="requestType"]');
+const requestDateInput = document.querySelector('[name="requestDate"]');
+const requestDateLabel = document.querySelector("#requestDateLabel");
+const requestedTimeInput = document.querySelector('[name="requestedTime"]');
+const requestedTimeLabel = document.querySelector("#requestedTimeLabel");
+const currentTimeCard = document.querySelector("#currentTimeCard");
+const requestedTimeCard = document.querySelector("#requestedTimeCard");
+const returnOptions = document.querySelector("#returnOptions");
+const controlBox = document.querySelector("#controlBox");
 const statusFilter = document.querySelector("#statusFilter");
 const pendingCount = document.querySelector("#pendingCount");
 const employeeFilter = document.querySelector("#employeeFilter");
@@ -86,6 +96,17 @@ const DEPARTMENTS = [
 const STATUS_PENDING = "Pendente";
 const STATUS_APPROVED = "Aprovada";
 const STATUS_REJECTED = "Recusada";
+
+// Campos do formulario que mudam conforme o tipo de RQ.
+const REQUEST_TYPE_RULES = {
+  "Alteracao de horario": { timeLabel: "Novo horario solicitado", hasTime: true, hasReturn: false },
+  "Entrada fora de horario": { timeLabel: "Horario de entrada", hasTime: true, hasReturn: false },
+  "Saida fora de horario": { timeLabel: "Horario de saida", hasTime: true, hasReturn: false },
+  "Servico externo": { timeLabel: "Horario de saida", hasTime: true, hasReturn: true },
+  "Saida particular": { timeLabel: "Horario de saida", hasTime: true, hasReturn: true },
+  "Falta justificada": { dateLabel: "Data da falta", hasTime: false, hasReturn: false, futureDate: true }
+};
+const DEFAULT_REQUEST_RULE = { timeLabel: "Horario de saida", hasTime: true, hasReturn: true };
 
 const DEFAULT_REGISTERED_SCHEDULE = "08:00 as 12:00 e 13:00 as 17:48";
 
@@ -226,6 +247,14 @@ async function supabaseApi(path, options) {
     return rows.map((row) => unmapKeys(row, RECORD_COLUMNS));
   }
 
+  if (path === "/records/exists") {
+    const { employeeId, requestDate, requestType } = options.body;
+    const query = `?select=id&limit=1&employee_id=eq.${encodeURIComponent(employeeId)}`
+      + `&request_date=eq.${encodeURIComponent(requestDate)}`
+      + `&request_type=eq.${encodeURIComponent(requestType)}&status=neq.Recusada`;
+    return (await supabaseRequest("records", { query })).length > 0;
+  }
+
   if (path === "/records/add") {
     await supabaseRequest("records", { method: "POST", body: mapKeys(options.body, RECORD_COLUMNS) });
     return { ok: true };
@@ -271,6 +300,12 @@ async function apiRequest(path, options = {}) {
   }
 
   if (path === "/records") return readStored(RECORDS_KEY, []);
+
+  if (path === "/records/exists") {
+    const { employeeId, requestDate, requestType } = options.body;
+    return readStored(RECORDS_KEY, []).some((item) => item.employeeId === employeeId
+      && item.requestDate === requestDate && item.requestType === requestType && item.status !== "Recusada");
+  }
 
   if (path === "/records/add") {
     const records = readStored(RECORDS_KEY, []);
@@ -389,9 +424,46 @@ function getSelectedReturnStatus() {
   return document.querySelector('[name="returnStatus"]:checked')?.value || "Vai retornar";
 }
 
+function getRequestRule() {
+  const type = document.querySelector('[name="requestType"]:checked')?.value;
+  return REQUEST_TYPE_RULES[type] || DEFAULT_REQUEST_RULE;
+}
+
+function tomorrowDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function showFormError(message) {
+  formError.textContent = message;
+  formError.hidden = !message;
+}
+
+function applyRequestType() {
+  const rule = getRequestRule();
+  showFormError("");
+
+  requestDateLabel.textContent = rule.dateLabel || "Data do ponto";
+  requestDateInput.readOnly = !rule.futureDate;
+  requestDateInput.min = rule.futureDate ? tomorrowDate() : "";
+  requestDateInput.value = rule.futureDate ? "" : todayDate();
+
+  requestedTimeLabel.textContent = rule.timeLabel || DEFAULT_REQUEST_RULE.timeLabel;
+  [currentTimeCard, requestedTimeCard, controlBox].forEach((element) => { element.hidden = !rule.hasTime; });
+  requestedTimeInput.disabled = !rule.hasTime;
+  requestedTimeInput.required = rule.hasTime;
+  form.elements.currentTime.disabled = !rule.hasTime;
+
+  returnOptions.hidden = !rule.hasReturn;
+  returnTimeCard.hidden = !rule.hasReturn;
+  updateReturnState();
+}
+
 function updateReturnState() {
+  const rule = getRequestRule();
   const willReturn = getSelectedReturnStatus() === "Vai retornar";
-  returnTimeInput.disabled = !willReturn;
+  returnTimeInput.disabled = !(willReturn && rule.hasReturn);
   returnTimeCard.classList.toggle("disabled-field", !willReturn);
   if (!willReturn) setField("returnTime", "");
   if (controlIdTime) {
@@ -410,13 +482,12 @@ function resetControlState() {
   controlIdText.textContent = "O horario sera exibido automaticamente pelo Control ID.";
   clockStatus.textContent = "Control ID: aguardando ponto";
   controlMetric.textContent = "Pendente";
-  document.querySelector('[name="requestDate"]').value = todayDate();
   setField("currentTime", "");
   setField("requestedTime", "");
   setField("returnTime", "");
   const defaultReturnStatus = document.querySelector('[name="returnStatus"][value="Vai retornar"]');
   if (defaultReturnStatus) defaultReturnStatus.checked = true;
-  updateReturnState();
+  applyRequestType();
 }
 
 function onlyDigits(value) {
@@ -562,14 +633,10 @@ function fillRegisteredScheduleAutomatically(force = false) {
 }
 
 function fillPointTime(pointTime) {
-  document.querySelector('[name="requestDate"]').value = todayDate();
+  if (!getRequestRule().futureDate) requestDateInput.value = todayDate();
   setField("currentTime", pointTime);
   if (!form.elements.requestedTime.value) setField("requestedTime", pointTime);
-  if (getSelectedReturnStatus() === "Vai retornar") {
-    returnTimeInput.disabled = false;
-  } else {
-    setField("returnTime", "");
-  }
+  if (getSelectedReturnStatus() !== "Vai retornar") setField("returnTime", "");
 }
 
 function formatDate(value) {
@@ -713,6 +780,19 @@ function renderRecords() {
     });
 }
 
+function validateRequest(record) {
+  const rule = REQUEST_TYPE_RULES[record.requestType] || DEFAULT_REQUEST_RULE;
+
+  if (rule.futureDate && record.requestDate < tomorrowDate()) {
+    return "Falta justificada exige solicitacao com 24h de antecedencia. Escolha a partir de amanha.";
+  }
+  if (rule.hasReturn && record.returnStatus === "Vai retornar" && record.returnTime && record.requestedTime
+    && record.returnTime <= record.requestedTime) {
+    return "O horario de retorno deve ser depois do horario de saida.";
+  }
+  return "";
+}
+
 function getFormValue(data, name) {
   return String(data.get(name) || "").trim();
 }
@@ -720,6 +800,14 @@ function getFormValue(data, name) {
 employeeIdInput.addEventListener("input", () => {
   employeeIdInput.value = onlyDigits(employeeIdInput.value);
   fillEmployeeById(employeeIdInput.value);
+});
+
+requestTypeInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    setField("requestedTime", "");
+    setField("returnTime", "");
+    applyRequestType();
+  });
 });
 
 returnStatusInputs.forEach((input) => {
@@ -767,6 +855,7 @@ rhPanelExitButton.addEventListener("click", () => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  showFormError("");
   let data = new FormData(form);
 
   if (!controlIdTime) {
@@ -796,7 +885,23 @@ form.addEventListener("submit", async (event) => {
     createdAt: new Date().toISOString()
   };
 
+  const validationError = validateRequest(record);
+  if (validationError) {
+    showFormError(validationError);
+    return;
+  }
+
   try {
+    let duplicated = false;
+    try {
+      duplicated = await apiRequest("/records/exists", { method: "POST", body: record });
+    } catch (error) {
+      duplicated = false; // Sem checagem de duplicidade, segue com o salvamento.
+    }
+    if (duplicated) {
+      showFormError("Ja existe uma solicitacao deste tipo para esta matricula e data (pendente ou aprovada).");
+      return;
+    }
     await apiRequest("/records/add", { method: "POST", body: record });
     recordsCache.push({ ...record, status: STATUS_PENDING });
   } catch (error) {
@@ -965,7 +1070,7 @@ async function initApp() {
   });
   populateDepartmentOptions();
   fillRegisteredScheduleAutomatically();
-  document.querySelector('[name="requestDate"]').value = todayDate();
+  applyRequestType();
   setRequestSectionEnabled(false);
   lockRhPanel();
   renderRecords();
