@@ -39,3 +39,7 @@ create policy employees_all on public.employees for all to anon using (true) wit
 
 drop policy if exists records_all on public.records;
 create policy records_all on public.records for all to anon using (true) with check (true);
+
+-- Fluxo de aprovacao (etapa 1). Execute no SQL Editor; pode rodar mais de uma vez.
+alter table public.records add column if not exists status     text not null default 'Pendente';
+alter table public.records add column if not exists decided_at timestamptz;

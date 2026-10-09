@@ -315,6 +315,15 @@
                         </select>
                       </label>
                       <label>
+                        Status
+                        <select id="statusFilter">
+                          <option value="">Todos</option>
+                          <option value="Pendente">Pendente</option>
+                          <option value="Aprovada">Aprovada</option>
+                          <option value="Recusada">Recusada</option>
+                        </select>
+                      </label>
+                      <label>
                         Funcionario
                         <input id="employeeFilter" placeholder="Filtrar por nome">
                       </label>
@@ -322,6 +331,10 @@
                   </div>
 
                   <div class="mini-metrics">
+                    <div>
+                      <span>Pendentes</span>
+                      <strong id="pendingCount">0</strong>
+                    </div>
                     <div>
                       <span>Mes</span>
                       <strong id="monthCount">0</strong>
@@ -374,6 +387,11 @@
           </div>
         </dl>
         <p class="reason" data-field="reason"></p>
+        <div class="record-decision">
+          <b class="status-badge" data-field="status"></b>
+          <button class="btn-secondary approve-action" type="button" data-action="approve-record">Aprovar</button>
+          <button class="btn-secondary danger-action" type="button" data-action="reject-record">Recusar</button>
+        </div>
         <a data-field="emailLink" class="email-link" href="#">Preparar e-mail ao RH</a>
       </article>
     </template>

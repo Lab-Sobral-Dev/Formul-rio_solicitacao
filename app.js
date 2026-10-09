@@ -19,6 +19,8 @@ const controlIdText = document.querySelector("#controlIdText");
 const clockStatus = document.querySelector("#clockStatus");
 const requestId = document.querySelector("#requestId");
 const departmentFilter = document.querySelector("#departmentFilter");
+const statusFilter = document.querySelector("#statusFilter");
+const pendingCount = document.querySelector("#pendingCount");
 const employeeFilter = document.querySelector("#employeeFilter");
 const clearStorage = document.querySelector("#clearStorage");
 const rhLock = document.querySelector("#rhLock");
@@ -81,6 +83,10 @@ const DEPARTMENTS = [
   "Guarita"
 ];
 
+const STATUS_PENDING = "Pendente";
+const STATUS_APPROVED = "Aprovada";
+const STATUS_REJECTED = "Recusada";
+
 const DEFAULT_REGISTERED_SCHEDULE = "08:00 as 12:00 e 13:00 as 17:48";
 
 const DEFAULT_EMPLOYEES_BY_ID = {
@@ -140,7 +146,9 @@ const RECORD_COLUMNS = {
   returnStatus: "return_status",
   reason: "reason",
   controlIdTime: "control_id_time",
-  createdAt: "created_at"
+  createdAt: "created_at",
+  status: "status",
+  decidedAt: "decided_at"
 };
 
 function mapKeys(source, columns) {
@@ -223,6 +231,16 @@ async function supabaseApi(path, options) {
     return { ok: true };
   }
 
+  if (path === "/records/status") {
+    const { id, status, decidedAt } = options.body;
+    await supabaseRequest("records", {
+      method: "PATCH",
+      query: `?id=eq.${encodeURIComponent(id)}`,
+      body: mapKeys({ status, decidedAt }, RECORD_COLUMNS)
+    });
+    return { ok: true };
+  }
+
   if (path === "/records/clear") {
     await supabaseRequest("records", { method: "DELETE", query: "?id=not.is.null" });
     return { ok: true };
@@ -257,6 +275,15 @@ async function apiRequest(path, options = {}) {
   if (path === "/records/add") {
     const records = readStored(RECORDS_KEY, []);
     records.push(options.body);
+    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+    return { ok: true };
+  }
+
+  if (path === "/records/status") {
+    const { id, status, decidedAt } = options.body;
+    const records = readStored(RECORDS_KEY, []);
+    const target = records.find((item) => item.id === id);
+    if (target) Object.assign(target, { status, decidedAt });
     localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
     return { ok: true };
   }
@@ -572,7 +599,8 @@ function createEmailLink(record) {
     `Retorno: ${record.returnStatus || "Vai retornar"}`,
     `Horario de retorno no ponto: ${record.returnTime || "-"}`,
     `Horario registrado no Control ID: ${record.controlIdTime || "-"}`,
-    `Motivo: ${record.reason}`
+    `Motivo: ${record.reason}`,
+    `Status: ${recordStatus(record)}`
   ].join("\n");
 
   return `mailto:${RH_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -594,14 +622,20 @@ function populateDepartmentFilter(records) {
   departmentFilter.value = departments.includes(current) ? current : "";
 }
 
+function recordStatus(record) {
+  return record.status || STATUS_PENDING;
+}
+
 function filteredRecords(records) {
   const department = departmentFilter.value;
+  const status = statusFilter.value;
   const employee = employeeFilter.value.trim().toLowerCase();
 
   return records.filter((record) => {
     const departmentMatches = !department || record.department === department;
+    const statusMatches = !status || recordStatus(record) === status;
     const employeeMatches = !employee || record.employeeName.toLowerCase().includes(employee);
-    return departmentMatches && employeeMatches;
+    return departmentMatches && statusMatches && employeeMatches;
   });
 }
 
@@ -624,6 +658,7 @@ function updateMetrics(records) {
     { month: 0, semester: 0, year: 0 }
   );
 
+  pendingCount.textContent = records.filter((record) => recordStatus(record) === STATUS_PENDING).length;
   monthCount.textContent = totals.month;
   semesterCount.textContent = totals.semester;
   yearCount.textContent = totals.year;
@@ -632,6 +667,7 @@ function updateMetrics(records) {
 function renderRecords() {
   if (!hasRhAccess()) {
     recordsList.innerHTML = '<p class="empty-state">Painel bloqueado. Digite a senha do Painel RH para visualizar os registros.</p>';
+    pendingCount.textContent = "0";
     monthCount.textContent = "0";
     semesterCount.textContent = "0";
     yearCount.textContent = "0";
@@ -665,6 +701,13 @@ function renderRecords() {
       node.querySelector('[data-field="requestedTime"]').textContent = record.currentTime || record.requestedTime || record.controlIdTime || "-";
       node.querySelector('[data-field="returnStatus"]').textContent = record.returnStatus || "Vai retornar";
       node.querySelector('[data-field="reason"]').textContent = record.reason;
+      const status = recordStatus(record);
+      node.querySelector(".record").dataset.id = record.id;
+      const badge = node.querySelector('[data-field="status"]');
+      badge.textContent = status;
+      badge.dataset.status = status;
+      node.querySelector('[data-action="approve-record"]').disabled = status === STATUS_APPROVED;
+      node.querySelector('[data-action="reject-record"]').disabled = status === STATUS_REJECTED;
       node.querySelector('[data-field="emailLink"]').href = createEmailLink(record);
       recordsList.append(node);
     });
@@ -755,7 +798,7 @@ form.addEventListener("submit", async (event) => {
 
   try {
     await apiRequest("/records/add", { method: "POST", body: record });
-    recordsCache.push(record);
+    recordsCache.push({ ...record, status: STATUS_PENDING });
   } catch (error) {
     saveStatus.textContent = error.message;
     return;
@@ -788,6 +831,31 @@ form.addEventListener("reset", () => {
 });
 
 departmentFilter.addEventListener("change", renderRecords);
+statusFilter.addEventListener("change", renderRecords);
+
+recordsList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-action]");
+  const card = button?.closest(".record");
+  if (!button || !card || !hasRhAccess()) return;
+
+  const status = { "approve-record": STATUS_APPROVED, "reject-record": STATUS_REJECTED }[button.dataset.action];
+  if (!status) return;
+
+  const decidedAt = new Date().toISOString();
+  button.disabled = true;
+  try {
+    await apiRequest("/records/status", { method: "POST", body: { id: card.dataset.id, status, decidedAt } });
+  } catch (error) {
+    rhLockStatus.textContent = error.message;
+    window.alert(`Nao foi possivel atualizar a solicitacao. ${error.message}`);
+    renderRecords();
+    return;
+  }
+
+  const record = recordsCache.find((item) => item.id === card.dataset.id);
+  if (record) Object.assign(record, { status, decidedAt });
+  renderRecords();
+});
 employeeFilter.addEventListener("input", renderRecords);
 
 employeeRegistryForm.elements.employeeId.addEventListener("input", () => {

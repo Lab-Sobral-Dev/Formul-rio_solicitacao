@@ -932,9 +932,9 @@ input[readonly] {
 
 .filters {
   display: grid;
-  grid-template-columns: minmax(130px, 0.8fr) minmax(170px, 1fr);
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 12px;
-  min-width: min(100%, 360px);
+  min-width: min(100%, 460px);
 }
 
 .employee-registry {
@@ -1023,7 +1023,7 @@ input[readonly] {
 
 .mini-metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -1124,6 +1124,49 @@ dd {
 .email-link {
   width: 100%;
   min-height: 38px;
+}
+
+.record-decision {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.record-decision .btn-secondary {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.record-decision .btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.record-decision .approve-action:hover:not(:disabled) {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.status-badge {
+  margin-right: auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warn);
+}
+
+.status-badge[data-status="Aprovada"] {
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--ok);
+}
+
+.status-badge[data-status="Recusada"] {
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--no);
 }
 
 .empty-state {
